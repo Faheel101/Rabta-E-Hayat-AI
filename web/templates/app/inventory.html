@@ -1,0 +1,194 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge, empty, days_left_cell with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block toolbar %}
+<a href="/app/inventory/storage" class="btn-secondary text-2xs">{{ t("ops.storage_cold_chain") }}</a>
+<span class="hidden text-2xs text-ink-muted sm:block">
+  {{ t("ops.units_count", shown=shown|num, total=total|num) }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+{% if stores %}
+  {% set alarm_count = stores|selectattr('is_out_of_range')|list|length %}
+  <details class="disclosure-card mb-4" {% if alarm_count %}open{% endif %}>
+    <summary class="disclosure-summary">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-info-50 text-info-700">{{ icon("thermometer", "h-4 w-4") }}</span>
+      <span class="disclosure-copy">
+        <strong class="disclosure-title">{{ t("ops.storage_cold_chain") }}</strong>
+        <span class="disclosure-hint">{{ t("ops.storage_locations", count=stores|length) }} · {{ t("ops.held_units", count=total|num) }}</span>
+      </span>
+      {% if alarm_count %}<span class="badge-critical">{{ alarm_count }} {{ t("ops.alarm") }}</span>{% else %}<span class="badge-safe">{{ t("ops.nothing_urgent") }}</span>{% endif %}
+      {{ icon("chevron-down", "nav-disclosure-chevron") }}
+    </summary>
+    <div class="disclosure-body grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {% for store in stores %}
+        <a href="/app/inventory/storage/{{ store.id }}" class="rounded-xl border border-line bg-surface p-4 transition hover:border-brand-300">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0"><p class="truncate text-xs font-medium text-ink">{{ store.name }}</p><p class="text-2xs text-ink-muted">{{ t("ops.temperature_range", minimum=store.target_temp_min_c|round(0)|int, maximum=store.target_temp_max_c|round(0)|int) }}</p></div>
+            {% if store.is_out_of_range %}<span class="badge-critical shrink-0">{{ t("ops.alarm") }}</span>{% endif %}
+          </div>
+          <div class="mt-2 flex items-baseline justify-between"><span class="num text-lg font-semibold {{ 'text-critical-600' if store.is_out_of_range else 'text-ink' }}">{% if store.last_temp_c is not none %}{{ store.last_temp_c }}&deg;C{% else %}&mdash;{% endif %}</span><span class="num text-2xs text-ink-muted">{{ t("ops.held_units", count=store.held|num) }}</span></div>
+        </a>
+      {% endfor %}
+    </div>
+  </details>
+{% endif %}
+
+{% set filters_active = filters.component or filters.group or filters.status not in ['', 'AVAILABLE'] or filters.expiring or filters.store %}
+<details class="disclosure-card mb-4" {% if filters_active %}open{% endif %}>
+  <summary class="disclosure-summary">
+    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-ink-secondary">{{ icon("search", "h-4 w-4") }}</span>
+    <span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.filters") }}</strong><span class="disclosure-hint">{{ t("common.filters_help") }}</span></span>
+    {% if filters_active %}<span class="badge-info">{{ t("common.active") }}</span>{% endif %}
+    {{ icon("chevron-down", "nav-disclosure-chevron") }}
+  </summary>
+  <form method="get" action="/app/inventory" class="disclosure-body grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+  <div>
+    <label class="label" for="f-component">{{ t("common.component") }}</label>
+    <select class="field" id="f-component" name="component">
+      <option value="">{{ t("common.all") }}</option>
+      {% for code, name in components %}
+        <option value="{{ code }}" {% if filters.component == code %}selected{% endif %}>
+          {{ code }} — {{ name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="label" for="f-group">{{ t("common.blood_group") }}</label>
+    <select class="field" id="f-group" name="group">
+      <option value="">{{ t("common.all") }}</option>
+      {% for code in groups %}
+        <option value="{{ code }}" {% if filters.group == code %}selected{% endif %}>{{ code }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="label" for="f-status">{{ t("common.status") }}</label>
+    <select class="field" id="f-status" name="status">
+      <option value="">{{ t("common.all") }}</option>
+      {% for code in statuses %}
+        <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>
+          {{ t("status." ~ code|lower) }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="label" for="f-expiring">{{ t("ops.expiring_within") }}</label>
+    <select class="field" id="f-expiring" name="expiring">
+      <option value="">{{ t("ops.any_date") }}</option>
+      <option value="72h" {% if filters.expiring == "72h" %}selected{% endif %}>{{ t("ops.hours_count", count=72) }}</option>
+      <option value="7d" {% if filters.expiring == "7d" %}selected{% endif %}>{{ t("ops.days_count", count=7) }}</option>
+    </select>
+  </div>
+
+  <div class="flex items-end gap-2">
+    <button type="submit" class="btn-primary flex-1">{{ t("ops.apply") }}</button>
+    <a href="/app/inventory" class="btn-secondary">{{ t("ops.reset") }}</a>
+  </div>
+
+  {% if filters.store %}<input type="hidden" name="store" value="{{ filters.store }}">{% endif %}
+  </form>
+</details>
+
+{% if units %}
+  <div class="table-wrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>{{ t("common.din") }}</th>
+          <th>{{ t("common.component") }} · {{ t("ops.group") }}</th>
+          <th>{{ t("common.expires") }}</th>
+          <th>{{ t("common.status") }}</th>
+          <th>{{ t("ops.stored_in") }} · {{ t("ops.flags") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for unit in units %}
+          <tr class="cursor-pointer"
+              onclick="window.location='/app/inventory/unit/{{ unit.id }}'">
+            <td class="whitespace-nowrap font-mono text-xs font-medium">
+              <a href="/app/inventory/unit/{{ unit.id }}" class="link">{{ unit.din }}</a>
+            </td>
+            <td><div class="flex items-center gap-2"><strong class="text-xs">{{ unit.component_code }}</strong>{{ group_chip(unit.group_code) }}</div><p class="mt-1 num text-2xs text-ink-muted">{{ unit.volume_ml }} ml · {{ t("ops.collected") }} {{ unit.collected_at|date }}</p></td>
+            <td class="whitespace-nowrap"><span class="num text-xs">{{ unit.expires_at|date }}</span><span class="mt-1 block">{{ days_left_cell(unit.expires_at) }}</span></td>
+            <td>{{ status_badge(unit.status) }}</td>
+            <td class="text-2xs text-ink-secondary">
+              {% if unit.store_name %}
+                {{ unit.store_name }}
+                {% if unit.store_alarm %}<span class="badge-critical ms-1">{{ t("ops.alarm") }}</span>{% endif %}
+              {% else %}
+                <span class="text-ink-faint">{{ t("ops.not_placed") }}</span>
+              {% endif %}
+              <span class="mt-1 flex flex-wrap gap-1">
+                {% if unit.is_leucodepleted %}<span class="badge-neutral">LD</span>{% endif %}
+                {% if unit.is_irradiated %}<span class="badge-neutral">Irr</span>{% endif %}
+                {% if unit.cold_chain_breach_count %}<span class="badge-critical" title="{{ t('ops.cold_chain_block_hint') }}">{{ t("ops.cold_chain") }}</span>{% endif %}
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+    <nav class="mt-4 flex items-center justify-between gap-3" aria-label="{{ t('common.pagination') }}">
+      <span class="text-xs text-ink-muted">{{ t("common.page_of", page=page, pages=pages) }}</span>
+      <div class="flex gap-2">
+        {% if page > 1 %}<a class="btn-secondary btn-sm" href="?component={{ filters.component }}&group={{ filters.group }}&status={{ filters.status }}&expiring={{ filters.expiring }}&store={{ filters.store }}&page={{ page - 1 }}">{{ t("common.previous") }}</a>{% endif %}
+        {% if page < pages %}<a class="btn-secondary btn-sm" href="?component={{ filters.component }}&group={{ filters.group }}&status={{ filters.status }}&expiring={{ filters.expiring }}&store={{ filters.store }}&page={{ page + 1 }}">{{ t("common.next") }}</a>{% endif %}
+      </div>
+    </nav>
+  {% endif %}
+
+  <p class="mt-2 text-2xs text-ink-muted">{{ t("ops.fefo_note") }} {% if total > shown %}{{ t("ops.fefo_showing", shown=shown|num, total=total|num) }}{% endif %}</p>
+{% else %}
+  {{ empty(t("ops.no_units_filters"), t("ops.no_units_filters_body")) }}
+{% endif %}
+
+{% if wastage and wastage.total %}
+  <details class="disclosure-card mt-6">
+    <summary class="disclosure-summary">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-warn-50 text-warn-700">{{ icon("trash", "h-4 w-4") }}</span>
+      <span class="disclosure-copy"><strong class="disclosure-title">{{ t("ops.wastage_period", days=wastage.days) }}</strong><span class="disclosure-hint">{{ t("ops.preventable_summary", preventable=wastage.preventable|num, total=wastage.total|num) }}</span></span>
+      {{ icon("chevron-down", "nav-disclosure-chevron") }}
+    </summary>
+    <div class="disclosure-body">
+      <div class="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+        <div class="h-full rounded-full bg-critical-500"
+             style="width: {{ (wastage.preventable_share * 100)|round(1) }}%"></div>
+      </div>
+
+      <table class="table">
+        <tbody>
+          {% for row in wastage.breakdown %}
+            <tr>
+              <td class="w-full text-xs">
+                {{ t("ops.discard_" ~ (row.reason or "other")|lower) }}
+                {% if row.preventable %}
+                  <span class="badge-warn ms-1">{{ t("ops.preventable") }}</span>
+                {% endif %}
+              </td>
+              <td class="num whitespace-nowrap text-end text-xs font-medium">{{ row.units|num }}</td>
+              <td class="num whitespace-nowrap text-end text-2xs text-ink-muted">
+                {{ (row.volume_ml / 1000)|round(1) }} L
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="mt-3 text-2xs text-ink-muted">{{ t("ops.wastage_note") }}</p>
+    </div>
+  </details>
+{% endif %}
+
+{% endblock %}

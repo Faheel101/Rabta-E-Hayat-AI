@@ -1,0 +1,342 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge, days_left_cell with context %}
+
+{% set stage_tone = {
+  "SCREENED":   "bg-brand-500",
+  "COLLECTED":  "bg-brand-600",
+  "TESTED":     "bg-info-500",
+  "SEPARATED":  "bg-info-600",
+  "RELEASED":   "bg-safe-500",
+  "ISSUED":     "bg-ink-faint",
+  "RETURNED":   "bg-info-500",
+  "CUSTODY_EXCEPTION": "bg-critical-500",
+  "TRANSFUSED": "bg-safe-600",
+  "DISCARDED":  "bg-critical-500",
+} %}
+
+{% block toolbar %}
+  {% if donor %}
+    <a href="/app/inventory/recall/{{ donor.id }}" class="btn-secondary text-2xs">
+      {{ t("ops.recall_donor") }}
+    </a>
+  {% endif %}
+  <a href="/app/inventory" class="btn-secondary text-2xs">{{ t("ops.back_to_stock") }}</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="grid gap-4 lg:grid-cols-3">
+
+  {# ── The bag itself ─────────────────────────────────────────────── #}
+  <div class="lg:col-span-1">
+    <div class="card card-pad">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="font-mono text-sm font-semibold text-ink">{{ unit.din }}</p>
+          <p class="mt-0.5 text-2xs text-ink-muted">
+            {{ component.name_en if component else unit.component_id }}
+          </p>
+        </div>
+        {{ status_badge(unit.status) }}
+      </div>
+
+      <dl class="mt-4 space-y-2.5 text-xs">
+        <div class="flex items-center justify-between gap-3">
+          <dt class="text-ink-muted">{{ t("common.blood_group") }}</dt>
+          <dd>{{ group_chip(group.code) if group else "—" }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <dt class="text-ink-muted">{{ t("ops.volume") }}</dt>
+          <dd class="num">{{ unit.volume_ml }} ml</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <dt class="text-ink-muted">{{ t("ops.collected") }}</dt>
+          <dd class="num">{{ unit.collected_at|datetime }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <dt class="text-ink-muted">{{ t("common.expires") }}</dt>
+          <dd class="num">{{ unit.expires_at|datetime }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          {# Past tense once the unit is gone. On a discarded bag this figure is
+             not shelf life remaining, it is the shelf life that was thrown
+             away — which is the whole cost of the decision. #}
+          <dt class="text-ink-muted">
+            {% if unit.discarded_at %}{{ t("ops.shelf_life_lost") }}{% else %}{{ t("ops.shelf_life_left") }}{% endif %}
+          </dt>
+          <dd>{{ days_left_cell(unit.expires_at) }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <dt class="text-ink-muted">{{ t("ops.screening") }}</dt>
+          <dd>
+            {% if unit.screening_status == "PASSED" %}
+              <span class="badge-safe">{{ t("ops.passed") }}</span>
+            {% elif unit.screening_status %}
+              <span class="badge-warn">{{ t("ops.screening_status_" ~ unit.screening_status|lower) }}</span>
+            {% else %}<span class="text-ink-faint">—</span>{% endif %}
+          </dd>
+        </div>
+        {% if unit.isbt_product_code %}
+          <div class="flex items-center justify-between gap-3">
+            <dt class="text-ink-muted">{{ t("ops.isbt_product") }}</dt>
+            <dd class="font-mono text-2xs">{{ unit.isbt_product_code }}</dd>
+          </div>
+        {% endif %}
+      </dl>
+
+      {% if unit.is_leucodepleted or unit.is_irradiated %}
+        <div class="mt-3 flex flex-wrap gap-1 border-t border-line pt-3">
+          {% if unit.is_leucodepleted %}<span class="badge-neutral">{{ t("ops.leucodepleted") }}</span>{% endif %}
+          {% if unit.is_irradiated %}<span class="badge-neutral">{{ t("ops.irradiated") }}</span>{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {# ── Where it is, and whether that store has behaved ──────────── #}
+    <div class="card card-pad mt-3">
+      <h2 class="text-xs font-semibold text-ink">{{ t("ops.storage") }}</h2>
+
+      {% if cold_chain.location %}
+        <a href="/app/inventory/storage/{{ cold_chain.location.id }}"
+           class="mt-2 block text-xs">
+          <span class="link">{{ cold_chain.location.name }}</span>
+          <span class="num ms-1 text-2xs text-ink-muted">
+            ({{ cold_chain.location.target_temp_min_c|round(0)|int }} to
+             {{ cold_chain.location.target_temp_max_c|round(0)|int }}&deg;C)
+          </span>
+        </a>
+
+        <p class="mt-2 text-2xs text-ink-muted">
+          {{ t("ops.readings_since_collection", count=cold_chain.readings|num) }}
+        </p>
+
+        {% if cold_chain.excursions %}
+          <div class="mt-2 rounded-md border border-critical-200 bg-critical-50 p-2.5">
+            <p class="text-2xs font-semibold text-critical-700">
+              {{ t("ops.unit_excursions", count=cold_chain.excursions|length) }}
+            </p>
+            <ul class="mt-1.5 space-y-1">
+              {% for e in cold_chain.excursions[:5] %}
+                <li class="num flex justify-between gap-2 text-2xs text-critical-700">
+                  <span>{{ e.recorded_at|datetime }}</span>
+                  <span class="font-semibold">{{ e.temperature_c }}&deg;C</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <p class="mt-2 text-2xs text-safe-700">
+            {{ t("ops.unit_no_excursions") }}
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="mt-2 text-2xs text-ink-muted">
+          {{ t("ops.not_on_shelf") }}
+          {%- if unit.status in ("TRANSFUSED", "ISSUED", "DISCARDED", "SEPARATED") %}
+            — {{ t("ops.unit_status_explanation", status=t("status." ~ unit.status|lower)) }}.
+          {%- else %}. {{ t("ops.no_storage_location") }}.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+
+    {# ── Discard ─────────────────────────────────────────────────── #}
+    {% if can_discard and discardable %}
+      <div class="card card-pad mt-3" x-data="{ open: false, reason: '' }">
+        <button type="button" class="btn-secondary w-full text-xs" @click="open = !open"
+                x-text="open ? '{{ t('common.cancel') }}' : '{{ t('ops.discard_unit') }}'"></button>
+
+        <form method="post" action="/app/inventory/unit/{{ unit.id }}/discard"
+              class="mt-3 space-y-3" x-show="open" x-cloak>
+          <div>
+            <label class="label" for="d-reason">{{ t("common.reason") }}</label>
+            <select class="field" id="d-reason" name="reason" x-model="reason" required>
+              <option value="">{{ t("ops.choose_reason") }}</option>
+              {% for r in discard_reasons %}
+                <option value="{{ r.code }}">{{ t("ops.discard_" ~ r.code|lower) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="label" for="d-note">
+              {{ t("ops.note") }} <span class="text-ink-faint" x-show="reason !== 'OTHER'">({{ t("ops.notes_optional")|lower }})</span>
+            </label>
+            <textarea class="field" id="d-note" name="note" rows="2"
+                      :required="reason === 'OTHER'"
+                      placeholder="{{ t('ops.what_happened') }}"></textarea>
+          </div>
+
+          <p class="text-2xs text-ink-muted">
+            {{ t("ops.discard_warning") }}
+          </p>
+
+          <button type="submit" class="btn-danger w-full text-xs">
+            {{ t("ops.discard_din", din=unit.din) }}
+          </button>
+        </form>
+      </div>
+    {% elif can_discard and not discardable %}
+      <p class="mt-3 px-1 text-2xs text-ink-muted">
+        {% if unit.status in ("RESERVED", "CROSSMATCHED") %}
+          {{ t("ops.discard_reserved_block") }}
+        {% elif unit.status == "DISCARDED" %}
+          {{ t("ops.already_discarded", date=unit.discarded_at|date if unit.discarded_at else "") }}
+        {% elif unit.status == "SEPARATED" %}
+          {{ t("ops.separated_unit_block") }}
+        {% else %}
+          {{ t("ops.status_discard_block", status=t("status." ~ unit.status|lower)) }}
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+
+  {# ── The chain ──────────────────────────────────────────────────── #}
+  <div class="lg:col-span-2">
+    <div class="card card-pad">
+      <div class="mb-4 flex items-baseline justify-between gap-3">
+        <h2 class="text-sm font-semibold text-ink">{{ t("ops.chain_custody") }}</h2>
+        {% if donor %}
+          <a href="/app/donors/{{ donor.id }}" class="link text-2xs">
+            {{ donor.donor_code }} — {{ donor.full_name }}
+          </a>
+        {% endif %}
+      </div>
+
+      {% if not complete %}
+        <div class="mb-4 rounded-md border border-warn-200 bg-warn-50 p-3">
+          <p class="text-2xs text-warn-800">
+            {{ t("ops.opening_balance_warning") }}
+          </p>
+        </div>
+      {% endif %}
+
+      {% if steps %}
+        <ol class="relative space-y-5 ps-6">
+          <span class="absolute inset-y-1 start-[5px] w-px bg-line"></span>
+
+          {% for step in steps %}
+            <li class="relative">
+              <span class="absolute -start-6 top-1 h-2.5 w-2.5 rounded-full ring-2 ring-surface
+                           {{ stage_tone.get(step.stage, 'bg-ink-faint') }}"></span>
+
+              <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <p class="text-xs font-semibold text-ink">
+                  {{ t("ops.stage_" ~ step.stage|lower) }}
+                </p>
+                <p class="num text-2xs text-ink-muted">{{ step.happened_at|datetime }}</p>
+              </div>
+
+              <p class="mt-0.5 text-xs text-ink-secondary">
+                {% if step.stage == "SCREENED" %}{{ t("ops.stage_summary_screened") }}
+                {% elif step.stage == "COLLECTED" %}{{ t("ops.stage_summary_collected", bag=t("ops.bag_" ~ (donation.bag_type if donation else "single")|lower), volume=donation.volume_ml if donation else unit.volume_ml) }}
+                {% elif step.stage == "TESTED" %}{% set reactive_results = step.detail.results|selectattr("reactive")|list %}{% if reactive_results %}{{ t("ops.stage_summary_tested", count=step.detail.results|length, reactive=reactive_results|length) }}{% else %}{{ t("ops.stage_summary_tested_clear", count=step.detail.results|length) }}{% endif %}
+                {% elif step.stage == "SEPARATED" %}{{ t("ops.stage_summary_separated", count=(step.detail.produced or [])|length) }}
+                {% elif step.stage == "RELEASED" %}{{ t("ops.stage_summary_released") }}
+                {% elif step.stage == "ISSUED" %}{{ t("ops.stage_summary_issued", request=step.detail.request_code) if step.detail.request_code else t("ops.stage_summary_issued_stock") }}
+                {% elif step.stage == "RETURNED" %}{{ t("ops.stage_summary_returned_accepted") if step.detail.accepted else t("ops.stage_summary_returned_rejected") }}
+                {% elif step.stage == "CUSTODY_EXCEPTION" %}{{ t("ops.stage_summary_custody_exception") }}
+                {% elif step.stage == "TRANSFUSED" %}{{ t("ops.stage_summary_transfused") if step.detail.outcome == "COMPLETED" else t("ops.stage_summary_transfusion_stopped") }}
+                {% elif step.stage == "DISCARDED" %}{{ t("ops.stage_summary_discarded", reason=t("ops.discard_" ~ step.detail.reason|lower)) }}
+                {% else %}{{ step.summary }}{% endif %}
+              </p>
+
+              {% if step.actor %}
+                <p class="mt-0.5 text-2xs text-ink-muted">{{ t("ops.recorded_by", actor=step.actor) }}</p>
+              {% endif %}
+
+              {# Collection: the session and the bag. #}
+              {% if step.stage == "COLLECTED" and step.detail.session %}
+                <p class="mt-1 text-2xs text-ink-muted">
+                  {{ step.detail.session }}
+                  {% if step.detail.session_code %}
+                    <span class="font-mono">({{ step.detail.session_code }})</span>
+                  {% endif %}
+                  {% if step.detail.anticoagulant %} · {{ step.detail.anticoagulant }}{% endif %}
+                </p>
+                {% if step.detail.adverse_reaction %}
+                  <p class="mt-1 text-2xs text-warn-700">
+                    {{ t("ops.adverse_reaction_recorded", reaction=t("ops.reaction_" ~ step.detail.adverse_reaction|lower)) }}
+                  </p>
+                {% endif %}
+              {% endif %}
+
+              {# Screening: the two numbers that decide eligibility. #}
+              {% if step.stage == "SCREENED" %}
+                <p class="num mt-1 text-2xs text-ink-muted">
+                  Hb {{ step.detail.haemoglobin_g_dl }} g/dL ·
+                  {{ step.detail.weight_kg }} kg
+                </p>
+              {% endif %}
+
+              {# Testing: the plate and the kit lot. This is what a recall asks for. #}
+              {% if step.stage == "TESTED" and step.detail.results %}
+                {# The plate is only shown when there is one. Tests run before
+                   this system took over the bench carry their kit lot — which is
+                   what a recall actually asks for — but no run record, and a
+                   column of dashes reads as missing data rather than as history. #}
+                {% set has_runs = step.detail.results|selectattr("run_code")|list %}
+                <div class="table-wrap mt-2">
+                  <table class="table text-2xs">
+                    <thead>
+                      <tr>
+                        <th>{{ t("ops.test") }}</th><th>{{ t("ops.result") }}</th><th>{{ t("ops.method") }}</th>
+                        <th>{{ t("ops.kit_lot") }}</th>
+                        {% if has_runs %}<th>{{ t("ops.run") }}</th>{% endif %}
+                        <th>{{ t("ops.verified_by_label") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for r in step.detail.results %}
+                        <tr>
+                          <td class="whitespace-nowrap font-medium">{{ r.code }}</td>
+                          <td>
+                            {% if r.reactive %}
+                              <span class="badge-critical">{{ r.result|title }}</span>
+                            {% else %}
+                              <span class="text-safe-700">{{ r.result|replace("_"," ")|title }}</span>
+                            {% endif %}
+                          </td>
+                          <td class="text-ink-muted">{{ r.method or "—" }}</td>
+                          <td class="font-mono text-ink-muted">{{ r.kit_lot or "—" }}</td>
+                          {% if has_runs %}
+                            <td class="font-mono text-ink-muted">{{ r.run_code or "—" }}</td>
+                          {% endif %}
+                          <td class="text-ink-muted">{{ r.verified_by or "—" }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
+
+              {# Separation: what was made, and what was lost with it. #}
+              {% if step.stage == "SEPARATED" %}
+                <p class="mt-1 text-2xs text-ink-muted">
+                  {% if step.detail.minutes_from_collection is not none %}
+                    {{ t("ops.after_collection", hours=(step.detail.minutes_from_collection / 60)|round(1)) }} ·
+                  {% endif %}
+                  {{ t("ops.produced", components=(step.detail.produced or [])|join(", ") or "—") }}
+                </p>
+                {% if step.detail.losses %}
+                  <ul class="mt-1 space-y-0.5">
+                    {% for code, why in step.detail.losses.items() %}
+                      <li class="text-2xs text-warn-700">
+                        {{ t("ops.component_not_made", component=code, reason=t("ops.loss_" ~ why|lower)) }}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="text-xs text-ink-muted">
+          {{ t("ops.no_trace_steps") }}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

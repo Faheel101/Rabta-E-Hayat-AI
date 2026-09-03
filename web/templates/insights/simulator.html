@@ -1,0 +1,177 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, empty with context %}
+{% from "layout/icons.html" import icon %}
+{% from "ai/_components.html" import result_content with context %}
+
+{% block content %}
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 class="text-xl">{{ t("sim.workspace") }}</h2>
+      <span class="badge-info">Monte Carlo</span>
+      <span class="badge-neutral">{{ t("sim.seed_locked") }}</span>
+    </div>
+    <p class="mt-1 max-w-3xl text-sm text-ink-muted">{{ t("sim.subtitle") }}</p>
+  </div>
+  {% if selected_run %}
+    <div class="text-end text-xs text-ink-muted">
+      <span class="block font-mono">{{ selected_run.id[:8]|upper }}</span>
+      <span class="num">{{ selected_run.iterations|num }} × · {{ selected_run.duration_ms|num }} ms</span>
+    </div>
+  {% endif %}
+</div>
+
+{% if active_incidents %}
+  <section class="note-critical mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div><strong>{{ t("sim.live_active") }}</strong><p class="mt-1 text-xs">{{ active_incidents[0].title }} · {{ active_incidents[0].declared_at|datetime }}</p></div>
+      <a class="btn-secondary btn-sm" href="/insights/transfer-plan">{{ t("sim.open_live_plan") }}</a>
+    </div>
+  </section>
+{% endif %}
+
+<div class="grid gap-4 xl:grid-cols-[minmax(20rem,.72fr)_minmax(0,1.28fr)]">
+  <aside class="space-y-4 {{ 'order-2 xl:order-1' if result else '' }}">
+    <section class="card overflow-hidden">
+      <div class="card-head"><div><h3 class="card-title">{{ t("sim.scenario_builder") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("sim.builder_help") }}</p></div></div>
+      {% if form_error %}<div class="note-critical mx-4 mt-4 sm:mx-5">{{ form_error.message }}</div>{% endif %}
+      <form method="post" action="/insights/simulator/run" class="space-y-5 p-4 sm:p-5" id="scenario-form">
+        <div>
+          <label class="label" for="preset-select">{{ t("sim.preset") }}</label>
+          <select class="field" id="preset-select">
+            <option value="">{{ t("sim.custom_scenario") }}</option>
+            {% for code, preset in presets.items() %}<option value="{{ code }}">{{ preset.name or code|replace('_',' ')|title }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label" for="scenario-name">{{ t("sim.scenario_name") }}</label>
+          <input class="field" id="scenario-name" name="name" required maxlength="255" value="{{ form_values.name }}">
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div><label class="label" for="event_type">{{ t("sim.event_type") }}</label><select class="field" id="event_type" name="event_type">{% for value in ["BUS_ACCIDENT","RTA_MASS","EARTHQUAKE","FLOOD","BUILDING_COLLAPSE","BLAST","INDUSTRIAL_FIRE","DENGUE_OUTBREAK","CUSTOM"] %}<option value="{{ value }}" {% if form_values.event_type == value %}selected{% endif %}>{{ t("sim.event_" ~ value|lower) }}</option>{% endfor %}</select></div>
+          <div><label class="label" for="casualties">{{ t("sim.casualties") }}</label><input class="field num" id="casualties" name="casualties" type="number" min="1" max="5000" required value="{{ form_values.casualties }}"></div>
+        </div>
+
+        <details class="disclosure-card shadow-none" {% if form_error %}open{% endif %}>
+          <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.advanced_settings") }}</strong><span class="disclosure-hint">{{ t("common.advanced_settings_help") }}</span></span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+          <div class="disclosure-body space-y-4">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div><label class="label" for="epicenter_lat">{{ t("sim.latitude") }}</label><input class="field num" id="epicenter_lat" name="epicenter_lat" type="number" step="0.0001" min="-90" max="90" value="{{ form_values.epicenter_lat }}"></div>
+          <div><label class="label" for="epicenter_lon">{{ t("sim.longitude") }}</label><input class="field num" id="epicenter_lon" name="epicenter_lon" type="number" step="0.0001" min="-180" max="180" value="{{ form_values.epicenter_lon }}"></div>
+          <div><label class="label" for="onset_profile">{{ t("sim.onset") }}</label><select class="field" id="onset_profile" name="onset_profile">{% for value in ["INSTANT","RAMP_6H","MULTI_DAY"] %}<option value="{{ value }}" {% if form_values.onset_profile == value %}selected{% endif %}>{{ t("sim.onset_" ~ value|lower) }}</option>{% endfor %}</select></div>
+          <div><label class="label" for="duration_hours">{{ t("sim.duration") }}</label><input class="field num" id="duration_hours" name="duration_hours" type="number" min="1" max="168" value="{{ form_values.duration_hours }}"></div>
+        </div>
+
+        <fieldset>
+          <legend class="label">{{ t("sim.severity_mix") }}</legend>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
+            {% for key in ["minor","moderate","severe","critical"] %}<label class="rounded-lg border border-line bg-surface-sunken p-2 text-2xs text-ink-muted">{{ t("sim.severity_" ~ key) }}<span class="mt-1 flex items-center gap-1"><input class="field num !py-1" name="severity_{{ key }}" type="number" min="0" max="100" step="1" value="{{ form_values['severity_' ~ key] }}"><span>%</span></span></label>{% endfor %}
+          </div>
+        </fieldset>
+
+        <details class="rounded-lg border border-line bg-surface-sunken" open>
+          <summary class="cursor-pointer px-3 py-2.5 text-xs font-semibold">{{ t("sim.infrastructure") }}</summary>
+          <div class="grid gap-3 border-t border-line p-3 sm:grid-cols-2">
+            <div><label class="label" for="impact_radius_km">{{ t("sim.impact_radius") }}</label><input class="field num" id="impact_radius_km" name="impact_radius_km" type="number" min="1" max="500" value="{{ form_values.impact_radius_km }}"></div>
+            <div><label class="label" for="facilities_degraded_pct">{{ t("sim.facilities_degraded") }}</label><input class="field num" id="facilities_degraded_pct" name="facilities_degraded_pct" type="number" min="0" max="100" value="{{ form_values.facilities_degraded_pct }}"></div>
+            <div><label class="label" for="degraded_capacity_loss_pct">{{ t("sim.capacity_loss") }}</label><input class="field num" id="degraded_capacity_loss_pct" name="degraded_capacity_loss_pct" type="number" min="0" max="100" value="{{ form_values.degraded_capacity_loss_pct }}"></div>
+            <label class="flex items-center gap-2 self-end rounded-lg border border-line bg-surface px-3 py-2 text-xs"><input name="roads_blocked" type="checkbox" value="true" {% if form_values.roads_blocked %}checked{% endif %}>{{ t("sim.roads_blocked") }}</label>
+          </div>
+        </details>
+
+        <div class="rounded-lg border border-brand-100 bg-brand-50 p-3">
+          <label class="flex items-start gap-2 text-xs font-semibold"><input class="mt-0.5" name="release_emergency_reserves" type="checkbox" value="true" {% if form_values.release_emergency_reserves %}checked{% endif %}>{{ t("sim.release_reserves") }}</label>
+          <div class="mt-2"><label class="label" for="emergency_reserve_release_pct">{{ t("sim.release_pct") }}</label><input class="field num" id="emergency_reserve_release_pct" name="emergency_reserve_release_pct" type="number" min="0" max="100" value="{{ form_values.emergency_reserve_release_pct }}"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label" for="iterations">{{ t("sim.iterations") }}</label><input class="field num" id="iterations" name="iterations" type="number" min="100" max="5000" value="{{ form_values.iterations }}"></div>
+          <div><label class="label" for="seed">{{ t("sim.seed") }}</label><input class="field num" id="seed" name="seed" type="number" value="{{ form_values.seed }}"></div>
+        </div>
+          </div>
+        </details>
+        {% if can_run %}<button class="btn-primary w-full" type="submit">{{ t("sim.run_scenario") }}</button>{% else %}<div class="note-info">{{ t("sim.view_only") }}</div>{% endif %}
+      </form>
+    </section>
+
+    <section class="card overflow-hidden">
+      <div class="card-head"><h3 class="card-title">{{ t("sim.saved_runs") }}</h3><span class="card-hint">{{ runs|length }}</span></div>
+      {% if runs %}<ul class="max-h-80 divide-y divide-line overflow-y-auto">{% for run in runs %}<li><a href="?run_id={{ run.id }}" class="block px-4 py-3 hover:bg-surface-sunken sm:px-5"><div class="flex items-center justify-between gap-2"><strong class="truncate text-xs">{{ run.name }}</strong><span class="badge-{{ 'info' if selected_run and selected_run.id == run.id else 'neutral' }} num">{{ run.iterations|num }}</span></div><p class="mt-1 text-2xs text-ink-muted">{{ run.event_type|replace('_',' ')|title }} · seed {{ run.seed }} · {{ run.created_at|datetime }}</p></a></li>{% endfor %}</ul>{% else %}{{ empty(t("sim.no_runs"), t("sim.no_runs_help")) }}{% endif %}
+    </section>
+  </aside>
+
+  <div class="min-w-0 space-y-4 {{ 'order-1 xl:order-2' if result else '' }}">
+    {% if result %}
+      {% set totals = result.totals %}
+      <div class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+        {{ kpi(t("sim.p95_requirement"), totals.planning_requirement_p95|num, t("common.units"), foot=t("sim.mc_total", value=totals.monte_carlo_total_p95|num), tone="brand") }}
+        {{ kpi(t("sim.coverage_now"), totals.coverage_before_actions_pct|pct(1), foot=t("sim.gap_units", value=totals.gap_units_now|num), tone="critical" if totals.coverage_before_actions_pct < 70 else "warn") }}
+        {{ kpi(t("sim.coverage_after"), totals.coverage_after_actions_pct|pct(1), foot=t("sim.gap_units", value=totals.gap_units_after_plan|num), tone="safe" if totals.coverage_after_actions_pct >= 90 else "info") }}
+        {{ kpi(t("sim.time_critical"), totals.time_to_critical_minutes|age_hours if totals.time_to_critical_minutes is not none else t("sim.not_reached"), foot=t("sim.from_onset"), tone="warn" if totals.time_to_critical_minutes is not none else "safe") }}
+      </div>
+
+      {% if result.comparison %}
+      <section class="card border-info-200 bg-info-50/30 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="card-title">{{ t("sim.comparison") }}</h3><p class="mt-1 text-2xs text-ink-muted">{{ t("sim.same_seed_help") }}</p></div><span class="badge-safe">{{ t("sim.same_seed") }}</span></div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{% for key in ["coverage_after_actions_pct","gap_units_after_plan","emergency_transfers","time_to_critical_minutes"] %}<div class="rounded-lg border border-line bg-surface p-3"><p class="text-2xs text-ink-muted">{{ t("sim.delta_" ~ key) }}</p><strong class="num mt-1 block text-lg {{ 'text-safe-600' if (key == 'coverage_after_actions_pct' and result.comparison.deltas[key] >= 0) or (key == 'gap_units_after_plan' and result.comparison.deltas[key] <= 0) else 'text-ink' }}">{{ '+' if result.comparison.deltas[key] is not none and result.comparison.deltas[key] > 0 else '' }}{{ result.comparison.deltas[key]|num(1) }}</strong></div>{% endfor %}</div>
+      </section>
+      {% endif %}
+
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><h3 class="card-title">{{ t("sim.requirement_mix") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("sim.requirement_help") }}</p></div><span class="card-hint">P95</span></div>
+        {% if result.requirement_by_group_component %}{% set max_req = result.requirement_by_group_component|map(attribute='required_p95')|max %}<div class="grid gap-x-6 gap-y-3 p-4 sm:grid-cols-2 sm:p-5">{% for item in result.requirement_by_group_component[:16] %}<div><div class="mb-1 flex items-center justify-between gap-2 text-xs"><span class="flex items-center gap-2"><strong>{{ item.component_code }}</strong>{{ group_chip(item.blood_group_code) }}</span><span class="num">{{ item.required_p95 }} · <span class="{{ 'text-critical-600' if item.gap else 'text-safe-600' }}">{{ item.gap }} {{ t("sim.gap") }}</span></span></div><div class="h-2 overflow-hidden rounded-full bg-surface-sunken"><div class="h-full rounded-full bg-brand-500" style="width: {{ (item.required_p95 / max_req * 100)|round(1) }}%"></div></div></div>{% endfor %}</div>{% endif %}
+      </section>
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        <section class="card overflow-hidden"><div class="card-head"><div><h3 class="card-title">{{ t("sim.infrastructure") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("sim.infrastructure_help") }}</p></div></div><dl class="divide-y divide-line px-4 sm:px-5"><div class="flex justify-between gap-3 py-3 text-xs"><dt class="text-ink-muted">{{ t("sim.affected_facilities") }}</dt><dd class="num font-semibold">{{ result.infrastructure.affected_facility_ids|length }}</dd></div><div class="flex justify-between gap-3 py-3 text-xs"><dt class="text-ink-muted">{{ t("sim.degraded_facilities") }}</dt><dd class="num font-semibold">{{ result.infrastructure.degraded_facility_ids|length }}</dd></div><div class="flex justify-between gap-3 py-3 text-xs"><dt class="text-ink-muted">{{ t("sim.surge_capacity") }}</dt><dd class="num font-semibold">{{ result.infrastructure.network_surge_capacity_casualties }}</dd></div><div class="flex justify-between gap-3 py-3 text-xs"><dt class="text-ink-muted">{{ t("sim.reserve_released") }}</dt><dd class="num font-semibold">{{ result.interventions.reserve_units_made_available }} {{ t("common.units") }}</dd></div></dl></section>
+        <section class="card overflow-hidden"><div class="card-head"><div><h3 class="card-title">{{ t("sim.demand_timeline") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("sim.timeline_help") }}</p></div></div><div class="space-y-2 p-4 sm:p-5">{% for point in result.timeline %}{% if loop.index0 % 2 == 0 or loop.last %}<div class="grid grid-cols-[2.5rem_1fr_3.5rem] items-center gap-2 text-2xs"><span class="num text-ink-muted">h+{{ point.hour }}</span><div class="h-2 overflow-hidden rounded-full bg-surface-sunken"><div class="h-full bg-critical-500" style="width: {{ [100, (point.cumulative_demand_p95 / (totals.units_required_p95 or 1) * 100)]|min }}%"></div></div><strong class="num text-end">{{ point.cumulative_demand_p95 }}</strong></div>{% endif %}{% endfor %}</div></section>
+      </div>
+
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><h3 class="card-title">{{ t("sim.transfer_actions") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("sim.transfer_help") }}</p></div><span class="badge-warn">{{ t("sim.approval_required") }}</span></div>
+        {% if result.emergency_transfers %}<ul class="divide-y divide-line">{% for row in result.emergency_transfers %}<li class="grid gap-3 px-4 py-3 sm:px-5 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><div class="min-w-0"><p class="truncate text-xs font-semibold">{{ row.from_facility_name }} → {{ row.to_facility_name }}</p><p class="mt-1 text-2xs text-ink-muted">{{ row.component_code }} · {{ row.blood_group_code }}{% if row.recipient_group_code != row.blood_group_code %} {{ t("sim.for_group", group=row.recipient_group_code) }}{% endif %}</p></div><strong class="num text-sm">{{ row.units }} {{ t("common.units") }}</strong><span class="badge-neutral num">{{ row.travel_minutes }} {{ t("common.minutes") }}</span></li>{% endfor %}</ul>{% else %}{{ empty(t("sim.no_transfers"), t("sim.no_transfers_help"), icon="check") }}{% endif %}
+      </section>
+
+      <section class="card overflow-hidden"><div class="card-head flex-wrap"><div><h3 class="card-title">{{ t("sim.incident_brief") }}</h3><p class="mt-0.5 text-2xs text-ink-muted">{{ t("ai.emergency_help") }}</p></div><form method="post" action="/ai/emergency/{{ selected_run.id }}"><input type="hidden" name="next" value="/insights/simulator?run_id={{ selected_run.id }}"><button class="btn-secondary btn-sm" type="submit">{{ icon("sparkles", "h-4 w-4") }} {{ t("ai.generate_emergency") }}</button></form></div><div class="p-4 sm:p-5">{% if ai_result %}{{ result_content(ai_result, true) }}{% else %}<div class="mb-3 flex items-center gap-2"><span class="badge-neutral">{{ t("ai.deterministic_current") }}</span><span class="text-2xs text-ink-muted">{{ t("sim.fact_bound") }}</span></div><div class="space-y-3 text-sm leading-relaxed text-ink-secondary">{% set brief = result.brief_ur if lang == 'ur' else result.brief_en %}{% for paragraph in brief %}<p>{{ paragraph|replace('**','') }}</p>{% endfor %}</div>{% endif %}</div></section>
+
+      {% if can_run %}<section class="card p-4 sm:p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="card-title">{{ t("sim.compare_intervention") }}</h3><p class="mt-1 text-2xs text-ink-muted">{{ t("sim.compare_help") }}</p></div><span class="badge-info">seed {{ selected_run.seed }}</span></div><form method="post" action="/insights/simulator/{{ selected_run.id }}/compare" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><label class="flex items-center gap-2 rounded-lg border border-line p-3 text-xs"><input type="checkbox" name="roads_blocked" value="true">{{ t("sim.roads_blocked") }}</label><div><label class="label">{{ t("sim.facilities_degraded") }}</label><input class="field" name="facilities_degraded_pct" type="number" min="0" max="100" value="{{ result.scenario.facilities_degraded_pct or 0 }}"></div><div><label class="label">{{ t("sim.capacity_loss") }}</label><input class="field" name="degraded_capacity_loss_pct" type="number" min="0" max="100" value="{{ result.scenario.degraded_capacity_loss_pct or 0 }}"></div><label class="flex items-center gap-2 rounded-lg border border-line p-3 text-xs"><input type="checkbox" name="release_emergency_reserves" value="true" {% if result.scenario.release_emergency_reserves %}checked{% endif %}>{{ t("sim.release_reserves") }}</label><div><label class="label">{{ t("sim.release_pct") }}</label><input class="field" name="emergency_reserve_release_pct" type="number" min="0" max="100" value="{{ result.scenario.emergency_reserve_release_pct }}"></div><div class="flex items-end"><button class="btn-secondary w-full" type="submit">{{ t("sim.run_comparison") }}</button></div></form></section>{% endif %}
+
+      {% if declared_incident %}
+        <section class="card {{ 'border-critical-200' if declared_incident.status == 'ACTIVE' else 'border-safe-200' }} p-4 sm:p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><span class="{{ 'badge-critical' if declared_incident.status == 'ACTIVE' else 'badge-safe' }}">{{ t("sim.live_active") if declared_incident.status == 'ACTIVE' else t("sim.live_resolved_label") }}</span><h3 class="mt-2 card-title">{{ declared_incident.title }}</h3><p class="mt-1 text-xs text-ink-muted">{{ t("sim.declared_by", name=declared_incident.declared_by) }}</p></div>{% if declared_incident.transfer_plan_id %}<a class="btn-secondary btn-sm" href="/insights/transfer-plan">{{ t("sim.open_live_plan") }}</a>{% endif %}</div>{% if declared_incident.status == 'ACTIVE' and can_declare %}<form method="post" action="/insights/simulator/incident/{{ declared_incident.id }}/resolve" class="mt-4 flex flex-col gap-2 sm:flex-row"><input class="field flex-1" name="note" minlength="5" required placeholder="{{ t('sim.resolution_note') }}"><button class="btn-secondary" type="submit">{{ t("sim.resolve_live") }}</button></form>{% endif %}</section>
+      {% elif can_declare %}
+        <section class="rounded-xl border-2 border-critical-200 bg-critical-50/40 p-4 sm:p-5"><div class="flex items-start gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-critical-100 font-bold text-critical-700">!</span><div><h3 class="text-sm font-semibold text-critical-700">{{ t("sim.declare_live") }}</h3><p class="mt-1 text-xs leading-relaxed text-critical-700">{{ t("sim.declare_warning") }}</p></div></div><form method="post" action="/insights/simulator/{{ selected_run.id }}/declare" class="mt-4 flex flex-col gap-2 sm:flex-row"><input class="field flex-1 font-mono" name="acknowledgement" autocomplete="off" required placeholder="{{ declaration_phrase }}"><button class="btn-danger" type="submit">{{ t("sim.declare_button") }}</button></form></section>
+      {% endif %}
+    {% else %}
+      <section class="card">{{ empty(t("sim.no_result"), t("sim.no_result_help")) }}</section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const presets = {{ presets|tojson }};
+  const select = document.getElementById('preset-select');
+  const form = document.getElementById('scenario-form');
+  if (!select || !form) return;
+  select.addEventListener('change', () => {
+    const preset = presets[select.value];
+    if (!preset) return;
+    Object.entries(preset).forEach(([key, value]) => {
+      if (key === 'severity_mix') {
+        Object.entries(value).forEach(([severity, amount]) => {
+          const input = form.elements['severity_' + severity.toLowerCase()];
+          if (input) input.value = Number(amount) <= 1 ? Number(amount) * 100 : amount;
+        });
+        return;
+      }
+      const input = form.elements[key];
+      if (!input) return;
+      if (input.type === 'checkbox') input.checked = Boolean(value);
+      else input.value = value;
+    });
+  });
+})();
+</script>
+{% endblock %}

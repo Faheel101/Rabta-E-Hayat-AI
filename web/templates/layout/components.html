@@ -1,0 +1,172 @@
+{# Reusable presentation macros.
+   Defined once so a badge, a KPI or a blood group chip looks identical on every
+   screen — spec §12.1 principle 5 only works if colour is applied consistently. #}
+
+{% macro kpi(label, value, unit="", foot="", tone="neutral", help="") %}
+<div class="kpi {{ {
+  'critical': 'before:!bg-critical-500',
+  'warn': 'before:!bg-warn-500',
+  'safe': 'before:!bg-safe-500',
+  'info': 'before:!bg-info-500',
+  'brand': 'before:!bg-brand-500',
+}.get(tone, '') }}">
+  <p class="kpi-label">
+    {{ label }}
+    {% if help %}<span title="{{ help }}" class="cursor-help text-ink-faint">&#9432;</span>{% endif %}
+  </p>
+  <p class="kpi-value {{ {
+    'critical': 'text-critical-600',
+    'warn': 'text-warn-700',
+    'safe': 'text-safe-600',
+  }.get(tone, '') }}">
+    {{ value }}{% if unit %}<span class="kpi-unit">{{ unit }}</span>{% endif %}
+  </p>
+  <p class="kpi-foot">{{ foot or "&nbsp;"|safe }}</p>
+</div>
+{% endmacro %}
+
+
+{% macro group_chip(code) %}
+<span class="chip-group {{ code|group_class }}">{{ code }}</span>
+{% endmacro %}
+
+
+{% macro facility_type_label(value) -%}
+{%- set labels = {
+  "RBC": "governance.facility_type_rbc",
+  "TERTIARY_HOSPITAL": "governance.facility_type_tertiary_hospital",
+  "SPECIALIST_CENTRE": "governance.facility_type_specialist_centre",
+  "DHQ": "governance.facility_type_dhq",
+  "THQ": "governance.facility_type_thq",
+  "HOSPITAL_BB": "governance.facility_type_hospital_bb",
+} -%}
+{{- t(labels[value]) if value in labels else value|replace("_", " ")|title -}}
+{%- endmacro %}
+
+
+{% macro operating_mode_label(value) -%}
+{%- set labels = {
+  "STANDALONE": "governance.mode_standalone",
+  "HOSPITAL_NETWORK": "governance.mode_hospital_network",
+  "RBC_NETWORK": "governance.mode_rbc_network",
+  "PROVINCIAL_PROGRAMME": "governance.mode_provincial_programme",
+} -%}
+{{- t(labels[value]) if value in labels else value|replace("_", " ")|title -}}
+{%- endmacro %}
+
+
+{% macro risk_badge(bucket) %}
+{%- set map = {
+  "CRITICAL": ("badge-critical", "risk.critical"),
+  "WARNING": ("badge-warn", "risk.warning"),
+  "WATCH": ("badge-warn", "risk.watch"),
+  "SAFE": ("badge-safe", "risk.safe"),
+  "NO_DEMAND": ("badge-neutral", "risk.no_demand"),
+} -%}
+{%- set entry = map.get(bucket, ("badge-neutral", "risk.safe")) -%}
+<span class="{{ entry[0] }} badge-dot">{{ t(entry[1]) }}</span>
+{%- endmacro %}
+
+
+{% macro tier_badge(tier) %}
+{%- set map = {
+  "ACT_NOW": ("badge-critical", "tier.act_now"),
+  "WATCH": ("badge-warn", "tier.watch"),
+  "UNRESCUABLE": ("badge-neutral", "tier.unrescuable"),
+  "NOT_TRANSFERABLE": ("badge-info", "tier.not_transferable"),
+  "SAFE": ("badge-safe", "tier.safe"),
+} -%}
+{%- set entry = map.get(tier, ("badge-neutral", "tier.safe")) -%}
+<span class="{{ entry[0] }} badge-dot">{{ t(entry[1]) }}</span>
+{%- endmacro %}
+
+
+{% macro status_badge(status) %}
+{%- set map = {
+  "AVAILABLE": "badge-safe",
+  "RESERVED": "badge-info",
+  "CROSSMATCHED": "badge-info",
+  "PENDING": "badge-warn",
+  "RECOMMENDED": "badge-warn",
+  "APPROVED": "badge-info",
+  "DISPATCHED": "badge-info",
+  "PARTIAL": "badge-warn",
+  "QUARANTINE": "badge-warn",
+  "IN_TRANSIT": "badge-info",
+  "MISSING_IN_TRANSIT": "badge-critical",
+  "RECEIVED": "badge-safe",
+  "FAILED_COLD_CHAIN": "badge-critical",
+  "REJECTED": "badge-critical",
+  "SUPERSEDED": "badge-neutral",
+  "ISSUED": "badge-neutral",
+  "TRANSFUSED": "badge-neutral",
+  "CLOSED": "badge-safe",
+  "CANCELLED": "badge-critical",
+  "EXPIRED": "badge-critical",
+  "DISCARDED": "badge-critical",
+  "SEPARATED": "badge-info",
+  "TESTING": "badge-warn",
+  "QUARANTINED": "badge-warn",
+  "RETURNED": "badge-info",
+} -%}
+{%- set labels = {
+  "AVAILABLE": "status.available",
+  "RESERVED": "status.reserved",
+  "CROSSMATCHED": "status.crossmatched",
+  "PENDING": "status.pending",
+  "RECOMMENDED": "status.recommended",
+  "APPROVED": "status.approved",
+  "DISPATCHED": "status.dispatched",
+  "PARTIAL": "status.partial",
+  "QUARANTINE": "status.quarantine",
+  "IN_TRANSIT": "status.in_transit",
+  "MISSING_IN_TRANSIT": "status.missing_in_transit",
+  "RECEIVED": "status.received",
+  "FAILED_COLD_CHAIN": "status.failed_cold_chain",
+  "REJECTED": "status.rejected",
+  "SUPERSEDED": "status.superseded",
+  "ISSUED": "status.issued",
+  "TRANSFUSED": "status.transfused",
+  "CLOSED": "status.closed",
+  "CANCELLED": "status.cancelled",
+  "EXPIRED": "status.expired",
+  "DISCARDED": "status.discarded",
+  "SEPARATED": "status.separated",
+  "TESTING": "status.testing",
+  "QUARANTINED": "status.quarantined",
+  "RETURNED": "status.returned",
+} -%}
+<span class="{{ map.get(status, 'badge-neutral') }}">{{ t(labels[status]) if status in labels else status|replace("_", " ")|title }}</span>
+{%- endmacro %}
+
+
+{% macro empty(title, body="", icon="circle") %}
+<div class="empty">
+  <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-full bg-surface-sunken text-ink-faint">
+    {% if icon == "check" %}
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
+    {% else %}
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+        <circle cx="12" cy="12" r="8"/>
+      </svg>
+    {% endif %}
+  </div>
+  <p class="empty-title">{{ title }}</p>
+  {% if body %}<p class="empty-body">{{ body }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+
+{% macro days_left_cell(expires_at) %}
+{%- set hours = expires_at|hours_until -%}
+{%- if hours is none -%}
+  <span class="text-ink-faint">&mdash;</span>
+{%- elif hours < 24 -%}
+  <span class="num font-semibold text-critical-600">{{ hours|age_hours }}</span>
+{%- elif hours < 72 -%}
+  <span class="num font-semibold text-warn-700">{{ hours|age_hours }}</span>
+{%- else -%}
+  <span class="num text-ink-secondary">{{ (hours / 24)|round(1) }} d</span>
+{%- endif -%}
+{% endmacro %}

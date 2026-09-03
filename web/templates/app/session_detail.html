@@ -1,0 +1,140 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty with context %}
+
+{% block toolbar %}
+{% if session.status == "OPEN" and can_screen %}
+  <a href="/app/sessions/{{ session.id }}/screen" class="btn-primary">{{ t("ops.screen_donor") }}</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------------------- session card #}
+<div class="card card-pad mb-4">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="text-lg font-semibold text-ink">{{ session.name }}</h2>
+      <p class="mt-0.5 text-xs text-ink-muted">
+        <span class="font-mono">{{ session.session_code }}</span>
+        · {{ session.scheduled_date|date }}
+        {%- if session.venue %} · {{ session.venue }}{% endif %}
+        {%- if session.organiser %} · {{ session.organiser }}{% endif %}
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      {% if is_camp %}<span class="badge-neutral">{{ t("ops.session_type_" ~ session.session_type|lower) }}</span>{% endif %}
+      {% if session.status == "OPEN" %}
+        <span class="badge-safe">{{ t("status.open") }}</span>
+        <form method="post" action="/app/sessions/{{ session.id }}/close">
+          <button type="submit" class="btn-secondary">{{ t("ops.close_session") }}</button>
+        </form>
+      {% else %}
+        <span class="badge-neutral">{{ t("status.closed") }}</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ------------------------------------------------------------------- counts #}
+<div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ops.screened"), summary.screened|num, foot=t("ops.completed_screenings")) }}
+  {{ kpi(t("ops.deferred"), summary.deferred|num,
+         foot=t("ops.of_screened", pct=(summary.deferral_rate * 100)|round(1)),
+         tone="warn" if summary.deferral_rate > 0.2 else "neutral") }}
+  {{ kpi(t("ops.collected"), summary.collected|num,
+         foot=t("ops.of_unit_target", target=session.target_units|num) if session.target_units else t("ops.units_drawn"),
+         tone="safe") }}
+  {{ kpi(t("ops.accepted_not_collected"), summary.did_not_donate|num,
+         foot=t("ops.accepted_not_collected_body"),
+         tone="warn" if summary.did_not_donate else "neutral") }}
+</div>
+
+{% if session.target_units and session.status == "CLOSED" %}
+  {% set shortfall = session.target_units - summary.collected %}
+  {% if shortfall > 0 %}
+    <div class="card card-pad mb-4 border-l-4 border-l-warn-500">
+      <p class="text-sm text-ink">{{ t("ops.session_shortfall", shortfall=shortfall|num, target=session.target_units|num) }}</p>
+      <p class="mt-1 text-xs text-ink-muted">{{ t("ops.session_shortfall_body") }}</p>
+    </div>
+  {% endif %}
+{% endif %}
+
+{# --------------------------------------------------------- unfinished drafts #}
+{% if drafts %}
+  <div class="card mb-4">
+    <div class="border-b border-line px-4 py-3">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.unfinished_screenings") }}</h3>
+      <p class="mt-0.5 text-xs text-ink-muted">{{ t("ops.unfinished_screenings_body") }}</p>
+    </div>
+
+    <div class="divide-y divide-line">
+      {% for row in drafts %}
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <span class="text-sm font-medium text-ink">
+              {{ row.donor.full_name if row.donor else t("ops.unknown_donor") }}
+            </span>
+            {% if row.donor %}
+              <span class="ms-2 font-mono text-2xs text-ink-muted">
+                {{ row.donor.donor_code }}
+              </span>
+            {% endif %}
+            <span class="block text-2xs text-ink-muted">
+              {{ t("ops.started_at", time=row.screening.screened_at|datetime) }}
+              {%- if row.screening.screened_by %} · {{ t("ops.started_by", actor=row.screening.screened_by) }}{% endif %}
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <a class="btn-secondary"
+               href="/app/sessions/{{ session.id }}/screen/{{ row.screening.id }}">
+              {{ t("ops.resume") }}
+            </a>
+            <form method="post"
+                  action="/app/sessions/{{ session.id }}/screen/{{ row.screening.id }}/abandon">
+              <input type="hidden" name="reason" value="{{ t('ops.donor_left_reason') }}">
+              <button type="submit" class="btn-ghost text-xs">{{ t("ops.donor_left") }}</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{# ------------------------------------------------------------ why deferred #}
+<div class="card">
+  <div class="border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.deferral_summary") }}</h3>
+  </div>
+
+  {% if reasons %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>{{ t("common.reason") }}</th><th class="text-end">{{ t("ops.donors") }}</th><th class="text-end">{{ t("ops.share") }}</th></tr>
+        </thead>
+        <tbody>
+          {% for reason, count in reasons %}
+            <tr>
+              <td>{{ t("eligibility.reason_" ~ reason|lower) if reason else t("ops.not_recorded") }}</td>
+              <td class="num text-end">{{ count|num }}</td>
+              <td class="num text-end text-xs text-ink-muted">
+                {{ ((count / summary.deferred) * 100)|round(1) if summary.deferred else 0 }}%
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="px-4 py-2 text-2xs text-ink-muted">{{ t("ops.deferral_privacy_note") }}</p>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.nobody_deferred"), t("ops.nobody_deferred_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

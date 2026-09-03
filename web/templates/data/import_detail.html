@@ -1,0 +1,103 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty %}
+
+{% block content %}
+<div class="mx-auto max-w-[1480px] space-y-5">
+  <section class="card overflow-hidden">
+    <div class="border-b border-line bg-gradient-to-r from-surface-sunken to-white px-5 py-5">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="mb-2 flex flex-wrap items-center gap-2">
+            <span class="badge-brand">{{ batch.mode }}</span>
+            <span class="badge-info">{{ t("data.inventory_units") if batch.data_type == 'INVENTORY' else t("data.demand_events") }}</span>
+            {% set status_class = 'badge-safe' if batch.status == 'COMMITTED' else ('badge-warn' if batch.status in ['NEEDS_REVIEW','COMMITTED_WITH_QUARANTINE'] else 'badge-info') %}
+            <span class="{{ status_class }}">{{ t("data.batch_" + batch.status|lower) }}</span>
+          </div>
+          <h2 class="truncate text-xl font-semibold">{{ batch.filename }}</h2>
+          <p class="mt-1 text-xs text-ink-muted">{{ facility.name_en }} · SHA-256 <span class="font-mono" dir="ltr">{{ batch.checksum_sha256 }}</span></p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          {% if batch.quarantined_rows or batch.rejected_rows %}<a class="btn-secondary" href="/data/imports/{{ batch.id }}/errors.csv">{{ t("data.download_errors") }}</a>{% endif %}
+          <a class="btn-ghost" href="/data">{{ t("data.back_to_data") }}</a>
+        </div>
+      </div>
+    </div>
+    <div class="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+      {{ kpi(t("data.total_rows"), batch.total_rows|num, foot=t("data.archived_before_parse"), tone="info") }}
+      {{ kpi(t("data.valid_rows"), batch.valid_rows|num, foot=t("data.safe_to_commit"), tone="safe") }}
+      {{ kpi(t("data.duplicates"), batch.duplicate_rows|num, foot=t("data.idempotent_update"), tone="info") }}
+      {{ kpi(t("data.quarantined"), batch.quarantined_rows|num, foot=t("data.needs_review"), tone="warn" if batch.quarantined_rows else "safe") }}
+      {{ kpi(t("data.rejected"), batch.rejected_rows|num, foot=t("data.will_not_ingest"), tone="critical" if batch.rejected_rows else "safe") }}
+    </div>
+  </section>
+
+  {% if batch.status in ['READY','NEEDS_REVIEW','PREVIEW'] %}
+  <section class="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
+    <div class="card">
+      <div class="card-head"><div><h2 class="card-title">{{ t("data.column_mapping") }}</h2><p class="card-hint">{{ t("data.column_mapping_hint") }}</p></div><span class="badge-neutral">{{ batch.source_headers_json|length }} {{ t("data.source_columns") }}</span></div>
+      <form class="card-pad" method="post" action="/data/imports/{{ batch.id }}/mapping">
+        <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+          {% for field in canonical_fields %}
+          <div>
+            <label class="label" for="map_{{ field }}">{{ t("data.field_" + field) }}</label>
+            <select class="field text-xs" id="map_{{ field }}" name="map_{{ field }}">
+              <option value="">{{ t("data.not_mapped") }}</option>
+              {% for header in batch.source_headers_json %}<option value="{{ header }}" {% if batch.field_mapping_json.get(field) == header %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            </select>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="mt-4 flex items-center justify-between gap-3"><p class="text-xs text-ink-muted">{{ t("data.remap_revalidates") }}</p><button class="btn-secondary" type="submit">{{ t("data.save_revalidate") }}</button></div>
+      </form>
+    </div>
+
+    <div class="card border-brand-200">
+      <div class="card-head"><div><h2 class="card-title">{{ t("data.commit_valid_rows") }}</h2><p class="card-hint">{{ t("data.commit_hint") }}</p></div><span class="badge-brand">{{ (batch.valid_rows + batch.duplicate_rows)|num }} {{ t("data.eligible") }}</span></div>
+      <form class="card-pad space-y-4" method="post" action="/data/imports/{{ batch.id }}/commit">
+        {% if batch.quarantined_rows or batch.rejected_rows %}<div class="note-warn text-xs"><strong>{{ t("data.partial_commit") }}</strong> {{ t("data.partial_commit_body", count=batch.quarantined_rows + batch.rejected_rows) }}</div>{% else %}<div class="note-safe text-xs"><strong>{{ t("data.validation_clean") }}</strong> {{ t("data.validation_clean_body") }}</div>{% endif %}
+        <div class="rounded-xl border border-line bg-surface-sunken p-3 text-xs text-ink-secondary">
+          <p class="font-semibold text-ink">{{ t("data.commit_effect") }}</p>
+          <ul class="mt-2 list-disc space-y-1 ps-5"><li>{{ t("data.commit_effect_domain") }}</li><li>{{ t("data.commit_effect_provenance") }}</li><li>{{ t("data.commit_effect_skips") }}</li></ul>
+        </div>
+        <div><label class="label" for="confirmation">{{ t("data.type_to_confirm") }} <code class="rounded bg-surface-sunken px-1.5 py-0.5" dir="ltr">COMMIT VALID ROWS</code></label><input class="field font-mono" id="confirmation" name="confirmation" autocomplete="off" required></div>
+        <button class="btn-primary w-full" type="submit" {% if batch.valid_rows + batch.duplicate_rows == 0 %}disabled{% endif %}>{{ t("data.commit_now") }}</button>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <section class="{{ 'note-warn' if batch.status == 'COMMITTED_WITH_QUARANTINE' else 'note-safe' }} flex flex-wrap items-center justify-between gap-3">
+    <div><strong>{{ t("data.import_committed") }}</strong><p class="mt-1 text-xs">{{ t("data.import_committed_body", count=batch.ingested_rows, actor=batch.committed_by) }}</p></div><span class="text-xs">{{ batch.committed_at|datetime }} · {{ batch.duration_ms }} ms</span>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-head"><div><h2 class="card-title">{{ t("data.validation_preview") }}</h2><p class="card-hint">{{ t("data.validation_preview_hint") }}</p></div><span class="text-xs text-ink-muted">{{ total|num }} {{ t("data.rows_lower") }}</span></div>
+    {% if rows %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>{{ t("data.source_reference") }}</th><th>{{ t("data.canonical_record") }}</th><th>{{ t("data.validation") }}</th><th>{{ t("data.status") }}</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+          {% set row_class = 'badge-safe' if row.status in ['VALID','INGESTED'] else ('badge-info' if row.status == 'DUPLICATE' else ('badge-warn' if row.status == 'QUARANTINED' else 'badge-critical')) %}
+          <tr>
+            <td class="num text-ink-muted">{{ row.row_number }}</td>
+            <td><span class="font-mono text-xs" dir="ltr">{{ row.source_system_ref or '—' }}</span>{% if row.entity_id %}<span class="mt-1 block text-2xs text-safe-700">{{ row.entity_type }} · {{ row.entity_id[:8] }}</span>{% endif %}</td>
+            <td><div class="max-w-xl text-xs text-ink-secondary">{% for key, value in row.normalized_json.items() %}{% if key in ['din','component_code','blood_group','units_requested','units_issued','status','outcome'] %}<span class="me-2 inline-block"><span class="text-ink-muted">{{ t("data.field_" + key) }}:</span> <strong class="text-ink">{{ value if value is not none else '—' }}</strong></span>{% endif %}{% endfor %}</div></td>
+            <td>
+              {% if row.errors_json %}<ul class="max-w-lg space-y-1 text-xs">{% for error in row.errors_json %}<li class="{{ 'text-critical-700' if error.severity == 'REJECT' else 'text-warn-700' }}"><code class="me-1 text-2xs">{{ error.code }}</code> {{ t("data.error_" + error.code|lower) }}</li>{% endfor %}</ul>{% else %}<span class="text-xs text-safe-700">{{ t("data.all_rules_passed") }}</span>{% endif %}
+            </td>
+            <td><span class="{{ row_class }}">{{ t("data.row_" + row.status|lower) }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pages > 1 %}<div class="flex items-center justify-between border-t border-line px-4 py-3 text-xs"><span>{{ t("data.page_of", page=page, pages=pages) }}</span><div class="flex gap-2">{% if page > 1 %}<a class="btn-secondary btn-sm" href="?page={{ page - 1 }}">{{ t("data.previous") }}</a>{% endif %}{% if page < pages %}<a class="btn-secondary btn-sm" href="?page={{ page + 1 }}">{{ t("data.next") }}</a>{% endif %}</div></div>{% endif %}
+    {% else %}<div class="card-pad">{{ empty(t("data.no_rows"), t("data.no_rows_body")) }}</div>{% endif %}
+  </section>
+
+  <section class="rounded-xl border border-info-200 bg-info-50 p-4 text-xs text-info-700">
+    <strong>{{ t("data.provenance_guarantee") }}</strong> {{ t("data.provenance_guarantee_body") }}
+  </section>
+</div>
+{% endblock %}

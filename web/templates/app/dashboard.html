@@ -1,0 +1,309 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, risk_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+<div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 sm:px-6">
+  <span class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+    {{ principal.active_facility.name_en if principal.active_facility else "" }}
+  </span>
+  {% if principal.active_facility %}
+    <span class="badge-neutral">
+      {{ t("facility_type." + principal.active_facility.facility_type) }}
+    </span>
+    <span class="badge-neutral">{{ principal.active_facility.district }}</span>
+    {% if principal.active_facility.shares_inventory %}
+      <span class="badge-info badge-dot">{{ t("ops.publishing_network") }}</span>
+    {% else %}
+      <span class="badge-neutral badge-dot">{{ t("ops.not_publishing_network") }}</span>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+
+<section class="overflow-hidden rounded-xl border border-line bg-surface shadow-card" aria-labelledby="workspace-title">
+  <div class="grid gap-4 bg-gradient-to-br from-brand-50 via-surface to-info-50 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+    <div>
+      <p class="text-2xs font-bold uppercase tracking-[0.16em] text-brand-600">{{ t("onboarding.your_workspace") }}</p>
+      <h2 id="workspace-title" class="mt-1.5 text-xl font-bold leading-tight text-ink">
+        {{ t("onboarding.dashboard_welcome", name=first_name) }}
+      </h2>
+      <p class="mt-1.5 max-w-3xl text-sm leading-relaxed text-ink-muted">{{ guide.mission }}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a class="btn-primary" href="{{ guide.first_action.url }}">{{ t("onboarding.start_with", task=guide.first_action.title) }}</a>
+      <a class="btn-secondary" href="/app/getting-started">{{ t("onboarding.explain_workspace") }}</a>
+    </div>
+  </div>
+
+  {% if not onboarding.complete %}
+    <div class="flex flex-col gap-3 border-t border-info-200 bg-info-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6" role="region" aria-label="{{ t('onboarding.new_user_title') }}">
+      <div class="flex items-start gap-3">
+        <span class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-info-100 text-info-700">{{ icon("help", "h-4 w-4") }}</span>
+        <div>
+          <p class="text-sm font-bold text-info-900">{{ t("onboarding.new_user_title") }}</p>
+          <p class="mt-1 text-xs leading-relaxed text-info-800">{{ t("onboarding.new_user_body") }}</p>
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-wrap gap-2 ps-11 sm:ps-0">
+        <a class="btn-secondary btn-sm" href="/app/getting-started">{{ t("onboarding.take_orientation") }}</a>
+        <form method="post" action="/app/getting-started/complete">
+          <input type="hidden" name="next" value="/app/dashboard">
+          <button class="btn-ghost btn-sm" type="submit">{{ t("onboarding.hide_welcome") }}</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+<section class="mt-4" aria-labelledby="my-work-title">
+  <div class="flex flex-wrap items-end justify-between gap-2">
+    <div>
+      <h2 id="my-work-title" class="text-sm font-bold text-ink">{{ t("onboarding.my_work") }}</h2>
+      <p class="mt-0.5 text-2xs text-ink-muted">{{ t("onboarding.my_work_help") }}</p>
+    </div>
+    <a class="text-xs font-semibold text-info-600 hover:underline" href="/app/getting-started#workflow">{{ t("onboarding.view_full_workflow") }}</a>
+  </div>
+  <ol class="mt-3 grid gap-3 lg:grid-cols-3">
+    {% for task in guide.tasks %}
+      <li>
+        <a href="{{ task.url }}" class="group flex h-full items-start gap-3 rounded-xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-ink-muted transition group-hover:bg-brand-50 group-hover:text-brand-700">
+            {{ icon(task.icon, "h-4 w-4") }}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center justify-between gap-2">
+              <strong class="text-sm text-ink">{{ task.title }}</strong>
+              {% if task.count is not none %}
+                <span class="{{ 'badge-warn' if task.count else 'badge-safe' }} num">{{ task.count|num }}</span>
+              {% endif %}
+            </span>
+            <span class="mt-1 block text-2xs leading-relaxed text-ink-muted">{{ task.body }}</span>
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ol>
+</section>
+
+{% if can_view_inventory %}
+<div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ops.units_on_hand"), totals.units|num, tone="info",
+         foot=t("ops.available_screening_passed")) }}
+  {{ kpi(t("ops.expiring_within_hours", hours=expiry_window_hours), totals.expiring_72h|num,
+         tone="warn" if totals.expiring_72h else "safe",
+         foot=t("ops.needs_decision_today") if totals.expiring_72h else t("ops.nothing_urgent")) }}
+  {{ kpi(t("ops.critical_series"), totals.critical_series|num,
+         tone="critical" if totals.critical_series else "safe",
+         foot=t("ops.series_below_reserve")) }}
+  {{ kpi(t("ops.at_risk_expiry"), totals.at_risk|num,
+         tone="warn" if totals.at_risk else "safe",
+         foot=t("ops.rescuable_transport_window")) }}
+</div>
+
+<details class="disclosure-card mt-4">
+  <summary class="disclosure-summary">
+    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-info-50 text-info-700">
+      {{ icon("box", "h-4 w-4") }}
+    </span>
+    <span class="min-w-0 flex-1">
+      <strong class="block text-sm text-ink">{{ t("ops.inventory_overview") }}</strong>
+      <span class="mt-0.5 block text-2xs text-ink-muted">{{ t("ops.inventory_overview_help") }}</span>
+    </span>
+    <span class="hidden items-center gap-2 sm:flex">
+      {% if totals.critical_series or totals.expiring_72h %}
+        <span class="badge-warn">
+          <span class="num">{{ (totals.critical_series + totals.expiring_72h)|num }}</span>
+          {{ t("ops.signals") }}
+        </span>
+      {% else %}
+        <span class="badge-safe">{{ t("ops.nothing_urgent") }}</span>
+      {% endif %}
+      {{ icon("chevron-down", "nav-disclosure-chevron") }}
+    </span>
+  </summary>
+  <div class="border-t border-line p-4 sm:p-5">
+
+<div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+
+  {# ----------------------------------------------------------- stock ----- #}
+  <section class="card min-w-0">
+    <div class="card-head">
+      <h2 class="card-title">{{ t("ops.stock_by_component") }}</h2>
+      <a href="/app/inventory" class="text-xs font-semibold text-info-600 hover:underline">
+        {{ t("ops.open_inventory") }}
+      </a>
+    </div>
+
+    {% if stock_rows %}
+      <div class="overflow-x-auto">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th>{{ t("common.component") }}</th>
+              <th class="text-end">{{ t("ops.on_hand") }}</th>
+              <th class="text-end">{{ t("ops.thinnest_cover") }}</th>
+              <th class="text-end">{{ t("ops.expiring_72h") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stock_rows %}
+              <tr>
+                <td>
+                  <a class="font-medium text-info-700 hover:underline" href="/app/inventory?component={{ row[0] }}">
+                    {{ row[0] }}
+                  </a>
+                  <span class="ms-1.5 text-2xs text-ink-muted">{{ row[1] }}</span>
+                </td>
+                <td class="num text-end font-semibold">{{ row[2]|num }}</td>
+                <td class="num text-end">
+                  {% if row[3] is not none %}
+                    <span class="{{ 'font-semibold text-critical-600' if row[3] < 2
+                                    else 'text-warn-700' if row[3] < 4
+                                    else 'text-ink-secondary' }}">
+                      {{ "%.1f"|format(row[3]) }} {{ t("common.days") }}
+                    </span>
+                  {% else %}
+                    <span class="text-ink-faint">&mdash;</span>
+                  {% endif %}
+                </td>
+                <td class="num text-end">
+                  {% if row[4] %}
+                    <span class="badge-warn">{{ row[4]|num }}</span>
+                  {% else %}
+                    <span class="text-ink-faint">0</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {{ empty(t("ops.no_stock"), t("ops.no_stock_body")) }}
+    {% endif %}
+  </section>
+
+  {# --------------------------------------------------- needs attention -- #}
+  <section class="card min-w-0">
+    <div class="card-head">
+      <h2 class="card-title">{{ t("ops.needs_attention") }}</h2>
+      <span class="card-hint"><span class="num">{{ critical|length }}</span> {{ t("ops.series") }}</span>
+    </div>
+
+    {% if critical %}
+      <ul class="divide-y divide-line">
+        {% for row in critical %}
+          <li class="flex items-center gap-3 px-4 py-2.5">
+            {{ group_chip(row[1]) }}
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-ink">{{ row[0] }}</p>
+              <p class="mt-0.5 text-2xs text-ink-muted">
+                <span class="num">{{ row[2]|num }}</span> {{ t("ops.on_hand")|lower }} ·
+                {{ t("ops.reserve_floor") }} <span class="num">{{ row[4]|num }}</span>
+              </p>
+            </div>
+            <div class="text-end">
+              {% if row[3] is not none %}
+                <p class="num text-sm font-semibold
+                          {{ 'text-critical-600' if row[3] < 2 else 'text-warn-700' }}">
+                  {{ "%.1f"|format(row[3]) }} {{ t("common.days") }}
+                </p>
+              {% endif %}
+              {{ risk_badge(row[5]) }}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ empty(t("ops.nothing_below_reserve"), t("ops.nothing_below_reserve_body"), icon="check") }}
+    {% endif %}
+  </section>
+</div>
+
+{# ------------------------------------------------------------- expiring -- #}
+<section class="card mt-4 min-w-0">
+  <div class="card-head">
+    <h2 class="card-title">{{ t("ops.expiring_within_hours", hours=expiry_window_hours) }}</h2>
+    <a href="/app/inventory?expiring=72h" class="text-xs font-semibold text-info-600 hover:underline">
+      {{ t("ops.see_all") }}
+    </a>
+  </div>
+
+  {% if expiring %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("common.din") }}</th>
+            <th>{{ t("common.component") }}</th>
+            <th>{{ t("ops.group") }}</th>
+            <th>{{ t("common.expires") }}</th>
+            <th>{{ t("ops.dispatch_deadline") }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in expiring %}
+            <tr>
+              <td class="font-mono text-xs">{{ row[0] }}</td>
+              <td>{{ row[1] }}</td>
+              <td>{{ group_chip(row[2]) }}</td>
+              <td class="num text-xs">{{ row[3]|datetime }}</td>
+              <td class="num text-xs">
+                {% if row[5] is not none %}
+                  {% if row[5] < 0 %}
+                    <span class="text-critical-600 font-semibold">{{ t("ops.elapsed") }}</span>
+                  {% else %}
+                    {{ row[5]|age_hours }}
+                  {% endif %}
+                {% else %}
+                  <span class="text-ink-faint">&mdash;</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if row[4] %}
+                  {% if row[4] == 'ACT_NOW' %}
+                    <span class="badge-critical badge-dot">{{ t("tier.act_now") }}</span>
+                  {% elif row[4] == 'WATCH' %}
+                    <span class="badge-warn badge-dot">{{ t("tier.watch") }}</span>
+                  {% elif row[4] == 'UNRESCUABLE' %}
+                    <span class="badge-neutral badge-dot">{{ t("tier.unrescuable") }}</span>
+                  {% else %}
+                    <span class="badge-safe badge-dot">{{ t("tier.safe") }}</span>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {{ empty(t("ops.nothing_expiring", hours=expiry_window_hours),
+             t("ops.nothing_expiring_body"),
+             icon="check") }}
+  {% endif %}
+</section>
+  </div>
+</details>
+{% else %}
+<section class="card mt-4 overflow-hidden" aria-labelledby="role-boundary-title">
+  <div class="flex items-start gap-4 p-5 sm:p-6">
+    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-safe-50 text-safe-700">
+      {{ icon("shield", "h-5 w-5") }}
+    </span>
+    <div class="min-w-0">
+      <h2 id="role-boundary-title" class="text-sm font-bold text-ink">{{ t("onboarding.handoff") }}</h2>
+      <p class="mt-1 max-w-3xl text-sm leading-relaxed text-ink-muted">{{ guide.handoff }}</p>
+      <a class="mt-3 inline-flex text-xs font-semibold text-info-700 hover:underline" href="/app/getting-started#workflow">
+        {{ t("onboarding.view_full_workflow") }}
+      </a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

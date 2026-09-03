@@ -1,0 +1,215 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, tier_badge, status_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+{% set filters_active = selected_facility_id or selected_component_id or selected_tier not in [none, 'ACTIONABLE'] or sort_by != 'deadline' %}
+<details class="border-t border-line" {% if filters_active %}open{% endif %}>
+<summary class="disclosure-summary min-h-12 px-4 py-2 sm:px-6"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.filters") }}</strong><span class="disclosure-hint">{{ t("common.filters_help") }}</span></span>{% if filters_active %}<span class="badge-info">{{ t("common.active") }}</span>{% endif %}{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+<form method="get" class="grid gap-2 border-t border-line px-4 py-3 sm:grid-cols-2 sm:px-6 lg:grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_minmax(9rem,.8fr)_minmax(9rem,.8fr)_auto]">
+  <div>
+    <label class="label" for="facility_id">{{ t("ex.filter_facility") }}</label>
+    <select class="field" id="facility_id" name="facility_id">
+      <option value="">{{ t("ex.all_scope_facilities") }}</option>
+      {% for facility in scope_facilities %}<option value="{{ facility.id }}" {% if facility.id == selected_facility_id %}selected{% endif %}>{{ facility.name_en }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="component_id">{{ t("ex.filter_component") }}</label>
+    <select class="field" id="component_id" name="component_id">
+      <option value="">{{ t("common.all") }}</option>
+      {% for component in references.components %}<option value="{{ component.id }}" {% if component.id == selected_component_id %}selected{% endif %}>{{ component.code }} · {{ component.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="tier">{{ t("ex.filter_tier") }}</label>
+    <select class="field" id="tier" name="tier">
+      <option value="ACTIONABLE" {% if selected_tier == 'ACTIONABLE' %}selected{% endif %}>{{ t("ex.tier_actionable") }}</option>
+      <option value="" {% if selected_tier is none %}selected{% endif %}>{{ t("common.all") }}</option>
+      {% for value, label in [("ACT_NOW","tier.act_now"),("WATCH","tier.watch"),("UNRESCUABLE","tier.unrescuable"),("NOT_TRANSFERABLE","tier.not_transferable"),("SAFE","tier.safe")] %}
+        <option value="{{ value }}" {% if value == selected_tier %}selected{% endif %}>{{ t(label) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="sort">{{ t("ex.sort_by") }}</label>
+    <select class="field" id="sort" name="sort">
+      {% for value, label in [("deadline","ex.sort_deadline"),("probability","ex.sort_probability"),("value","ex.sort_value")] %}<option value="{{ value }}" {% if value == sort_by %}selected{% endif %}>{{ t(label) }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="flex items-end"><button class="btn-primary w-full" type="submit">{{ t("fc.update_view") }}</button></div>
+</form>
+</details>
+{% endblock %}
+
+{% block content %}
+<div class="mb-5">
+  <h2 class="text-xl">{{ t("ex.decision_queue") }}</h2>
+  <p class="mt-1 max-w-3xl text-sm text-ink-muted">{{ t("ex.subtitle") }}</p>
+</div>
+
+<section class="card mb-4 overflow-hidden">
+  <div class="card-head flex-wrap gap-3">
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="card-title">{{ t("ex.flow_title") }}</h2>
+        <span class="badge-info">{{ t("ex.flow_human_gate") }}</span>
+      </div>
+      <p class="mt-1 max-w-3xl text-2xs text-ink-muted">{{ t("ex.flow_help") }}</p>
+    </div>
+    <a class="{{ 'btn-primary' if summary.approval_ready_transfers else 'btn-secondary' }} btn-sm" href="/insights/transfer-plan?status=RECOMMENDED">
+      {{ icon("shield-check", "h-4 w-4") }}
+      {{ t("ex.review_approvals", count=summary.approval_ready_transfers) }}
+    </a>
+  </div>
+  <ol class="grid border-t border-line sm:grid-cols-2 xl:grid-cols-4">
+    {% for title, help in [("ex.flow_identify","ex.flow_identify_help"),("ex.flow_review","ex.flow_review_help"),("ex.flow_decide","ex.flow_decide_help"),("ex.flow_execute","ex.flow_execute_help")] %}
+      <li class="flex gap-3 border-b border-line px-4 py-3 last:border-b-0 sm:px-5 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-e xl:last:border-e-0">
+        <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-50 text-2xs font-bold text-brand-700">{{ loop.index }}</span>
+        <div><strong class="block text-xs text-ink">{{ t(title) }}</strong><span class="mt-0.5 block text-2xs leading-relaxed text-ink-muted">{{ t(help) }}</span></div>
+      </li>
+    {% endfor %}
+  </ol>
+  <div class="border-t border-line bg-surface-sunken px-4 py-2.5 text-2xs text-ink-secondary sm:px-5"><strong>{{ t("ex.flow_boundary") }}</strong></div>
+</section>
+
+<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ex.kpi_at_risk"), summary.at_risk|num, tone="warn" if summary.at_risk else "safe", foot=t("ex.value_at_stake", value=summary.value_at_risk|money), help=t("ex.reason_shown")) }}
+  {{ kpi(t("ex.kpi_rescuable"), summary.rescuable|num, tone="brand" if summary.rescuable else "safe", foot=t("ex.rescuable_help")) }}
+  {{ kpi(t("ex.kpi_unrescuable"), summary.unrescuable|num, tone="critical" if summary.unrescuable else "safe", foot=t("ex.unrescuable_help")) }}
+  {{ kpi(t("ex.kpi_rescued"), summary.rescued_mtd|num, tone="safe", foot=t("cc.month_to_date")) }}
+</div>
+
+<div class="mt-4 space-y-4">
+  <section class="card overflow-hidden">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("ex.prioritised_units") }}</h2>
+        <p class="mt-0.5 text-2xs text-ink-muted">{{ t("ex.queue_help") }}</p>
+      </div>
+      <span class="card-hint">{{ t("common.showing", shown=rows|length, total=filtered_total) }}</span>
+    </div>
+    {% if rows %}
+      <ul class="divide-y divide-line">
+        {% for row in rows %}
+          <li class="px-4 py-4 sm:px-5">
+            <div class="flex flex-wrap items-start gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  {{ tier_badge(row.rescue_tier) }}
+                  <a href="/insights/unit-evidence/{{ row.blood_unit_id }}" class="font-mono text-xs font-semibold text-info-600 hover:underline">{{ row.din }}</a>
+                  <span class="text-xs font-semibold text-ink">{{ row.component_code }}</span>
+                  {{ group_chip(row.group_code) }}
+                </div>
+                <p class="mt-1.5 text-xs text-ink-secondary">{{ row.facility_name }}</p>
+                <p class="mt-2 max-w-3xl text-xs leading-relaxed text-ink-muted">
+                  {% if row.transfer_id %}
+                    {{ t("ex.reason_planned", probability=(row.waste_probability * 100)|round(0)|int, tracking=(row.transfer_tracking_code or row.transfer_id[:8]), destination=row.display_destination_name) }}
+                  {% elif lang == 'ur' and row.reason_ur %}
+                    {{ row.reason_ur }}
+                  {% elif lang == 'ur' and row.destination_name %}
+                    {{ t("ex.reason_rescue", hours=(row.days_left * 24)|round(0)|int,
+                         destination=row.destination_name, minutes=row.best_travel_minutes|num) }}
+                  {% elif lang == 'ur' %}
+                    {{ t("ex.reason_no_route", hours=(row.days_left * 24)|round(0)|int) }}
+                  {% else %}
+                    {{ row.reason_en or t("ex.reason_pending") }}
+                  {% endif %}
+                </p>
+              </div>
+              <div class="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-end text-xs sm:grid-cols-3">
+                <div><span class="block text-2xs text-ink-muted">{{ t("ex.waste_probability") }}</span><strong class="num {{ 'text-critical-600' if row.waste_probability >= 0.7 else 'text-warn-700' }}">{{ (row.waste_probability * 100)|pct(0) }}</strong></div>
+                <div><span class="block text-2xs text-ink-muted">{{ t("ex.time_left") }}</span><strong class="num {{ 'text-critical-600' if row.hours_to_deadline is not none and row.hours_to_deadline <= 24 else '' }}">{{ row.hours_to_deadline|age_hours }}</strong></div>
+                <div><span class="block text-2xs text-ink-muted">{{ t("common.expires") }}</span><strong class="num">{{ row.expires_at|date("%d %b") }}</strong></div>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-2.5">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                {% if row.display_destination_name %}
+                  <span><span class="text-ink-muted">{{ t("ex.planned_destination") if row.transfer_id else t("ex.best_destination") }}:</span> <strong>{{ row.display_destination_name }}</strong></span>
+                  <span><span class="text-ink-muted">{{ t("common.travel") }}:</span> <strong class="num">{{ row.display_travel_minutes|num }} {{ t("common.minutes") }}</strong></span>
+                  <span><span class="text-ink-muted">{{ t("ex.dispatch_deadline") }}:</span> <strong class="num">{{ row.display_dispatch_deadline_at|datetime }}</strong></span>
+                {% else %}
+                  <span class="text-ink-muted">{{ t("ex.no_safe_destination") }}</span>
+                {% endif %}
+              </div>
+              <div class="flex items-center gap-2">
+                {% if row.transfer_id %}
+                  {{ status_badge(row.transfer_status) }}
+                  <a class="{{ 'btn-primary' if row.transfer_status == 'RECOMMENDED' else 'btn-secondary' }} btn-sm" href="/insights/transfer-plan/{{ row.transfer_id }}">
+                    {{ t("ex.review_and_decide") if row.transfer_status == 'RECOMMENDED' else t("tr.open_transfer") }}
+                  </a>
+                {% else %}
+                  <span class="badge-neutral" title="{{ t('ex.not_planned_help') }}">{{ t("ex.not_planned") }}</span>
+                  <a class="btn-secondary btn-sm" href="/insights/unit-evidence/{{ row.blood_unit_id }}">{{ t("cc.open_unit") }}</a>
+                {% endif %}
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ empty(t("ex.no_units"), t("ex.no_units_help"), icon="check") }}
+    {% endif %}
+
+    {% if pages > 1 %}
+      <nav class="flex items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-5" aria-label="{{ t('common.pagination') }}">
+        <span class="text-xs text-ink-muted">{{ t("common.page_of", page=page, pages=pages) }}</span>
+        <div class="flex gap-2">
+          {% if page > 1 %}<a class="btn-secondary btn-sm" href="?facility_id={{ selected_facility_id or '' }}&component_id={{ selected_component_id or '' }}&tier={{ selected_tier or '' }}&sort={{ sort_by }}&page={{ page - 1 }}">{{ t("common.previous") }}</a>{% endif %}
+          {% if page < pages %}<a class="btn-secondary btn-sm" href="?facility_id={{ selected_facility_id or '' }}&component_id={{ selected_component_id or '' }}&tier={{ selected_tier or '' }}&sort={{ sort_by }}&page={{ page + 1 }}">{{ t("common.next") }}</a>{% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  </section>
+
+  <details class="disclosure-card self-start">
+    <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.supporting_details") }}</strong><span class="disclosure-hint">{{ t("common.supporting_details_help") }}</span></span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+    <div class="disclosure-body space-y-4">
+    <section class="card card-pad">
+      <div>
+        <h2 class="card-title">{{ t("ex.timeline") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("ex.timeline_help") }}</p>
+      </div>
+      {% if timeline %}
+        <div class="mt-4 space-y-2.5">
+          {% for day in timeline %}
+            <div class="grid grid-cols-[3.5rem_1fr_2rem] items-center gap-2 text-2xs">
+              <span class="num text-ink-muted">{{ day.date|date("%d %b") }}</span>
+              <div class="flex h-3 overflow-hidden rounded-full bg-surface-sunken" title="{{ day.at_risk }} {{ t('ex.timeline_at_risk') }}, {{ day.used }} {{ t('ex.timeline_consumed') }}">
+                <span class="bg-critical-500" style="width: {{ day.at_risk_pct }}%"></span>
+                <span class="bg-safe-500" style="width: {{ day.used_pct }}%"></span>
+              </div>
+              <strong class="num text-end">{{ day.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="mt-4 flex flex-wrap gap-3 text-2xs text-ink-muted"><span class="flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-sm bg-critical-500"></i>{{ t("ex.timeline_at_risk") }}</span><span class="flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-sm bg-safe-500"></i>{{ t("ex.timeline_consumed") }}</span></div>
+      {% else %}
+        {{ empty(t("common.no_data"), t("ex.timeline_empty")) }}
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div><h2 class="card-title">{{ t("ex.prevention") }}</h2><p class="mt-0.5 text-2xs text-ink-muted">{{ t("ex.prevention_help") }}</p></div></div>
+      {% if prevention %}
+        <ul class="divide-y divide-line">
+          {% for item in prevention %}
+            <li class="px-4 py-3 sm:px-5">
+              <div class="flex items-center justify-between gap-3"><div><p class="text-xs font-semibold text-ink">{{ item.facility_name }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ item.component_code }} · {{ item.group_code }}</p></div><span class="badge-critical num">{{ item.units }} {{ t("common.units") }}</span></div>
+              <p class="mt-2 text-2xs leading-relaxed text-ink-secondary">{{ t("ex.prevention_suggestion", units=item.units, component=item.component_code, group=item.group_code) }}</p>
+              <a class="mt-2 inline-block text-2xs font-semibold text-info-600 hover:underline" href="/insights/forecast?facility_id={{ item.facility_id }}&component_id={{ references.components|selectattr('code','equalto',item.component_code)|map(attribute='id')|first }}&view=compare">{{ t("ex.review_allocation") }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        {{ empty(t("ex.no_prevention"), t("ex.no_prevention_help"), icon="check") }}
+      {% endif %}
+    </section>
+    </div>
+  </details>
+</div>
+
+<div class="note-info mt-4">{{ t("ex.human_approval_notice") }}</div>
+{% endblock %}

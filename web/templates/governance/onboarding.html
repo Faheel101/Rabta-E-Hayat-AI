@@ -1,0 +1,44 @@
+{% extends "layout/base.html" %}
+{% from "layout/icons.html" import icon %}
+{% from "layout/components.html" import operating_mode_label with context %}
+
+{% block content %}
+<section class="relative overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-800 via-brand-700 to-info-700 px-5 py-6 text-white shadow-card sm:px-7 sm:py-8">
+  <div class="absolute -end-20 -top-24 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+  <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <div class="max-w-3xl">
+      <div class="mb-3 flex items-center gap-2 text-2xs font-bold uppercase tracking-[.18em] text-white/75">{{ icon("building", "h-4 w-4") }} {{ t("governance.onboarding_eyebrow") }}</div>
+      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">{{ t("governance.onboarding_title") }}</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-white/80">{{ t("governance.onboarding_intro") }}</p>
+    </div>
+    <a class="btn bg-white text-brand-800 hover:bg-brand-50" href="/admin/onboarding/new">{{ icon("plus", "h-4 w-4") }} {{ t("governance.onboarding_new") }}</a>
+  </div>
+</section>
+
+<section class="mt-4 grid gap-3 md:grid-cols-3">
+  {% for item in [
+    ('shield-check','governance.onboarding_principle_draft','governance.onboarding_principle_draft_help'),
+    ('list-checks','governance.onboarding_principle_ready','governance.onboarding_principle_ready_help'),
+    ('activity','governance.onboarding_principle_live','governance.onboarding_principle_live_help')
+  ] %}
+  <div class="card card-pad"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700">{{ icon(item[0], "h-4 w-4") }}</span><h2 class="mt-3 text-sm font-bold">{{ t(item[1]) }}</h2><p class="mt-1 text-xs leading-relaxed text-ink-muted">{{ t(item[2]) }}</p></div>
+  {% endfor %}
+</section>
+
+<section class="card mt-4 overflow-hidden">
+  <div class="card-head"><div><h2 class="card-title">{{ t("governance.onboarding_drafts") }}</h2><p class="card-hint">{{ t("governance.onboarding_drafts_help") }}</p></div><span class="badge-neutral num">{{ drafts|length }}</span></div>
+  {% if drafts %}
+  <div class="divide-y divide-line">
+    {% for row in drafts %}
+    <a href="/admin/onboarding/{{ row.facility.id }}" class="group grid gap-4 px-4 py-4 transition-colors hover:bg-surface-subtle sm:px-5 lg:grid-cols-[minmax(0,1fr)_13rem_auto] lg:items-center">
+      <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h3 class="truncate text-sm font-semibold">{{ row.facility.name_en }}</h3><span class="badge-warn">{{ t("governance.status_draft") }}</span></div><p class="mt-1 text-2xs text-ink-muted"><span class="font-mono">{{ row.facility.code }}</span> · {{ row.facility.district }} · {{ operating_mode_label(row.operating_mode) }}</p></div>
+      <div><div class="mb-1 flex justify-between text-2xs"><span class="text-ink-muted">{{ t("governance.readiness") }}</span><strong class="num">{{ row.checks|selectattr('passed')|list|length }}/{{ row.checks|length }}</strong></div><div class="h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full {{ 'bg-safe-500' if row.ready else 'bg-warn-500' }}" style="width:{{ (row.checks|selectattr('passed')|list|length / row.checks|length * 100)|round }}%"></div></div></div>
+      <span class="btn-secondary btn-sm">{{ t("common.open") }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty py-12"><span class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-safe-50 text-safe-700">{{ icon("check", "h-5 w-5") }}</span><p class="empty-title mt-3">{{ t("governance.no_onboarding_drafts") }}</p><p class="empty-body">{{ t("governance.no_onboarding_drafts_help") }}</p></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+# Runtime dependency set verified by the Sprint 7 release suite.
+# Development/test-only packages live in requirements-dev.txt.
+streamlit==1.61.1
+pandas==3.0.5
+numpy==2.5.2
+scipy==1.18.0
+scikit-learn==1.9.0
+SQLAlchemy==2.0.52
+lightgbm==4.6.0
+ortools==9.15.6755
+Jinja2==3.1.6
+FastAPI==0.141.1
+uvicorn[standard]==0.52.3
+python-multipart==0.0.32
+bcrypt==5.0.0
+httpx==0.28.1
+python-dotenv==1.2.2
+PyYAML==6.0.3
+requests==2.34.2
+hijridate==2.6.0
+psycopg2-binary==2.9.11
+itsdangerous==2.2.0
+python-barcode==0.16.1
+qrcode[pil]==8.2

@@ -1,0 +1,185 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty with context %}
+
+{% block toolbar %}
+<span class="hidden text-2xs text-ink-muted sm:block">
+  {{ t("ops.awaiting_results_count", count=pending|length) }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ops.awaiting_results"), pending|length, foot=t("ops.awaiting_results_body")) }}
+  {{ kpi(t("ops.ready_release"), ready|length,
+         foot=t("ops.ready_release_body"), tone="safe" if ready else "neutral") }}
+  {{ kpi(t("ops.open_plates"), open_runs|length, foot=t("ops.open_plates_body")) }}
+  {{ kpi(t("ops.blocked_two_person"), blocked_by_two_person_rule,
+         foot=t("ops.blocked_two_person_body"), tone="warn" if blocked_by_two_person_rule else "neutral") }}
+</div>
+
+{# ------------------------------------------------------------- open a plate #}
+{% if can_test %}
+  <div class="card card-pad mb-4">
+    <h2 class="text-sm font-semibold text-ink">{{ t("ops.start_plate") }}</h2>
+    <p class="mt-1 text-xs text-ink-muted">{{ t("ops.start_plate_body") }}</p>
+
+    <form method="post" action="/app/lab/runs/open"
+          class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div>
+        <label class="label" for="r-test">{{ t("ops.assay") }}</label>
+        <select class="field" id="r-test" name="test_code" required>
+          {% for code in panel %}
+            <option value="{{ code }}">{{ code }} — {{ methods.get(code, "") }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="label" for="r-lot">{{ t("ops.kit_lot") }}</label>
+        <input class="field num" id="r-lot" name="kit_lot" autocomplete="off"
+               placeholder="LOT-48211">
+      </div>
+
+      <div>
+        <label class="label" for="r-expiry">{{ t("ops.kit_expiry") }}</label>
+        <input class="field num" id="r-expiry" name="kit_expiry" type="date">
+      </div>
+
+      <div>
+        <label class="label" for="r-equip">{{ t("ops.analyser") }}</label>
+        <input class="field" id="r-equip" name="equipment" autocomplete="off"
+               placeholder="Evolis 1">
+      </div>
+
+      <div class="flex items-end">
+        <button type="submit" class="btn-primary w-full">{{ t("ops.open_plate") }}</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{# ---------------------------------------------------------------- open runs #}
+{% if open_runs %}
+  <div class="card mb-4">
+    <div class="border-b border-line px-4 py-3">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.plates_progress") }}</h3>
+    </div>
+    <div class="divide-y divide-line">
+      {% for run in open_runs %}
+        <a href="/app/lab/runs/{{ run.id }}"
+           class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-surface-sunken">
+          <div>
+            <span class="font-mono text-xs font-medium text-ink">{{ run.run_code }}</span>
+            <span class="block text-2xs text-ink-muted">
+              {{ run.test_code }}
+              {%- if run.kit_lot %} · {{ t("ops.lot", lot=run.kit_lot) }}{% endif %}
+              · {{ t("ops.opened_by", time=run.opened_at|datetime, actor=run.opened_by) }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            {% if run.controls_valid is false %}
+              <span class="badge-critical">{{ t("ops.controls_failed") }}</span>
+            {% elif run.controls_valid %}
+              <span class="badge-safe">{{ t("ops.controls_valid") }}</span>
+            {% else %}
+              <span class="badge-warn">{{ t("ops.controls_not_recorded") }}</span>
+            {% endif %}
+            <span class="badge-neutral">{{ t("ops.plate_status_" ~ run.status|lower) }}</span>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{# ------------------------------------------------------------ ready to sign #}
+<div class="card mb-4">
+  <div class="border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.ready_release") }}</h3>
+    <p class="mt-0.5 text-xs text-ink-muted">{{ t("ops.ready_release_help") }}</p>
+  </div>
+
+  {% if ready %}
+    <div class="divide-y divide-line">
+      {% for row in ready %}
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <span class="font-mono text-xs font-medium text-ink">{{ row.din }}</span>
+            <span class="block text-2xs text-ink-muted">
+              {{ t("ops.donor_code", code=row.donor_code) }} · {{ t("ops.collected_at", time=row.collected_at|datetime) }}
+              · {{ t("ops.tested_by", actor=row.tested_by) }}
+            </span>
+          </div>
+
+          {% if row.releasable_by_actor %}
+            <form method="post" action="/app/lab/release/{{ row.donation_id }}">
+              <button type="submit" class="btn-primary">{{ t("ops.verify_release") }}</button>
+            </form>
+          {% else %}
+            <span class="badge-warn" title="{{ t('ops.you_tested_this_hint') }}">
+              {{ t("ops.you_tested_this") }}
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if blocked_by_two_person_rule %}
+      <p class="border-t border-line px-4 py-2 text-2xs text-ink-muted">
+        {{ t("ops.blocked_visible_note", count=blocked_by_two_person_rule) }}
+      </p>
+    {% endif %}
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.nothing_signature"), t("ops.nothing_signature_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{# ------------------------------------------------------------- the worklist #}
+<div class="card">
+  <div class="border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.awaiting_results") }}</h3>
+    <p class="mt-0.5 text-xs text-ink-muted">{{ t("ops.awaiting_results_help") }}</p>
+  </div>
+
+  {% if pending %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("common.din") }}</th>
+            <th>{{ t("ops.donor") }}</th>
+            <th>{{ t("ops.collected") }}</th>
+            <th class="text-end">{{ t("ops.waiting") }}</th>
+            <th>{{ t("ops.still_needed") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in pending %}
+            <tr>
+              <td class="whitespace-nowrap font-mono text-xs">{{ row.din }}</td>
+              <td class="font-mono text-2xs text-ink-muted">{{ row.donor_code }}</td>
+              <td class="num whitespace-nowrap text-xs">{{ row.collected_at|datetime }}</td>
+              <td class="num text-end text-xs {% if row.hours_waiting > 24 %}text-warn-700{% endif %}">
+                {{ row.hours_waiting }} {{ t("common.hours") }}
+              </td>
+              <td class="space-x-1">
+                {% for code in row.outstanding %}
+                  <span class="badge-neutral">{{ code }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.nothing_waiting"), t("ops.nothing_waiting_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

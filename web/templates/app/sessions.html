@@ -1,0 +1,148 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty with context %}
+
+{% block toolbar %}
+<span class="hidden text-2xs text-ink-muted sm:block">
+  {{ t("ops.sessions_count", shown=shown|num, total=total|num) }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------------ open session banner #}
+{% if open_session %}
+  <div class="card card-pad mb-4 border-l-4 border-l-safe-500">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-2xs font-semibold uppercase tracking-wider text-safe-700">
+          {{ t("ops.open_now") }}
+        </p>
+        <p class="mt-0.5 text-sm font-semibold text-ink">
+          {{ open_session.name }}
+          <span class="ms-1 font-mono text-xs font-normal text-ink-muted">
+            {{ open_session.session_code }}
+          </span>
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/app/sessions/{{ open_session.id }}/screen" class="btn-primary">
+          {{ t("ops.screen_donor") }}
+        </a>
+        <a href="/app/sessions/{{ open_session.id }}" class="btn-secondary">{{ t("ops.open_action") }}</a>
+      </div>
+    </div>
+  </div>
+{% elif can_open %}
+  <div class="card card-pad mb-4">
+    <h2 class="text-sm font-semibold text-ink">{{ t("ops.no_session_open") }}</h2>
+    <p class="mt-1 text-xs text-ink-muted">{{ t("ops.no_session_open_body") }}</p>
+
+    <form method="post" action="/app/sessions/open"
+          x-data="{ type: 'IN_HOUSE' }"
+          class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <label class="label" for="s-type">{{ t("ops.session_type") }}</label>
+        <select class="field" id="s-type" name="session_type" x-model="type">
+          {% for code, label in session_types.items() %}
+            <option value="{{ code }}">{{ t("ops.session_type_" ~ code|lower) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <template x-if="type !== 'IN_HOUSE'">
+        <div>
+          <label class="label" for="s-venue">{{ t("ops.venue") }}</label>
+          <input class="field" id="s-venue" name="venue"
+                 placeholder="{{ t('ops.venue_placeholder') }}">
+        </div>
+      </template>
+
+      <template x-if="type !== 'IN_HOUSE'">
+        <div>
+          <label class="label" for="s-organiser">{{ t("ops.organiser") }}</label>
+          <input class="field" id="s-organiser" name="organiser"
+                 placeholder="{{ t('ops.organiser_placeholder') }}">
+        </div>
+      </template>
+
+      <template x-if="type !== 'IN_HOUSE'">
+        <div>
+          <label class="label" for="s-target">{{ t("ops.target_units") }}</label>
+          <input class="field num" id="s-target" name="target_units"
+                 type="number" min="0" value="100">
+        </div>
+      </template>
+
+      <div class="flex items-end">
+        <button type="submit" class="btn-primary">{{ t("ops.open_session") }}</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{# ------------------------------------------------------------------- filter #}
+<form method="get" action="/app/sessions" class="mb-4 flex flex-wrap items-end gap-3">
+  <div>
+    <label class="label" for="f-status">{{ t("common.status") }}</label>
+    <select class="field" id="f-status" name="status"
+            onchange="this.form.submit()">
+      <option value="">{{ t("ops.all_sessions") }}</option>
+      <option value="OPEN" {% if filters.status == "OPEN" %}selected{% endif %}>{{ t("status.open") }}</option>
+      <option value="CLOSED" {% if filters.status == "CLOSED" %}selected{% endif %}>{{ t("status.closed") }}</option>
+    </select>
+  </div>
+</form>
+
+{% if rows %}
+  <div class="table-wrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>{{ t("ops.session") }}</th>
+          <th>{{ t("ops.type") }}</th>
+          <th>{{ t("ops.date") }}</th>
+          <th class="text-end">{{ t("ops.screened") }}</th>
+          <th class="text-end">{{ t("ops.collected") }}</th>
+          <th class="text-end">{{ t("ops.target") }}</th>
+          <th>{{ t("common.status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          {% set s = row.session %}
+          <tr class="cursor-pointer" onclick="window.location='/app/sessions/{{ s.id }}'">
+            <td>
+              <a class="link font-medium" href="/app/sessions/{{ s.id }}">{{ s.name }}</a>
+              <span class="block font-mono text-2xs text-ink-muted">{{ s.session_code }}</span>
+            </td>
+            <td class="text-xs text-ink-secondary">
+              {{ t("ops.session_type_" ~ s.session_type|lower) }}
+              {% if s.organiser %}
+                <span class="block text-2xs text-ink-muted">{{ s.organiser }}</span>
+              {% endif %}
+            </td>
+            <td class="num whitespace-nowrap text-xs">{{ s.scheduled_date|date }}</td>
+            <td class="num text-end">{{ row.screened|num }}</td>
+            <td class="num text-end font-medium">{{ row.collected|num }}</td>
+            <td class="num text-end text-xs text-ink-muted">
+              {% if s.target_units %}{{ s.target_units|num }}{% else %}—{% endif %}
+            </td>
+            <td>
+              {% if s.status == "OPEN" %}
+                <span class="badge-safe">{{ t("status.open") }}</span>
+              {% else %}
+                <span class="badge-neutral">{{ t("status.closed") }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mt-2 text-2xs text-ink-muted">{{ t("ops.screened_count_note") }}</p>
+{% else %}
+  {{ empty(t("ops.no_sessions"), t("ops.no_sessions_body")) }}
+{% endif %}
+
+{% endblock %}

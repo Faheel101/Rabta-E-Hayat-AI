@@ -1,0 +1,60 @@
+name: rabta-e-hayat
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rabta-e-hayat:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${RABTA_PORT:-8765}:8000"
+    environment:
+      APP_ENV: demo
+      APP_NAME: Rabta-e-Hayat
+      APP_VERSION: "0.15.0"
+      DATABASE_URL: sqlite:////data/rabta.db
+      DEMO_DATE: "2026-08-06"
+      SECRET_KEY: "${SECRET_KEY:-local-demo-only-change-before-production-3f7d0b2e9a6c}"
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_COOKIE_SAMESITE: strict
+      TRUSTED_HOSTS: "localhost,127.0.0.1,app,testserver"
+      AUTO_CREATE_SCHEMA: "false"
+      RABTA_SHOW_DEMO_LOGINS: "1"
+      LOG_LEVEL: INFO
+      LOG_JSON: "true"
+      DATA_NOTICE: Synthetic demonstration data only
+      SYNTHETIC_DATA: "true"
+      INTELLIGENCE_REFRESH_ENABLED: "true"
+      INTELLIGENCE_REFRESH_POLL_SECONDS: "5"
+      AI_ENABLED: "${AI_ENABLED:-true}"
+      QWEN_API_KEY: "${QWEN_API_KEY:-}"
+      QWEN_MODEL: "${QWEN_MODEL:-qwen3.7-plus}"
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}"
+      AI_TIMEOUT_SECONDS: "${AI_TIMEOUT_SECONDS:-8}"
+      AI_MAX_RETRIES: "${AI_MAX_RETRIES:-1}"
+      AI_DAILY_TOKEN_BUDGET: "${AI_DAILY_TOKEN_BUDGET:-250000}"
+      AI_DAILY_BUDGET_USD: "${AI_DAILY_BUDGET_USD:-20}"
+      AI_FEATURES: "${AI_FEATURES:-command_brief,transfer_rationale,emergency_brief,ask_rabta,forecast_guardian,optimizer_advisor}"
+      BACKUP_DIR: /backups
+    volumes:
+      - rabta-data:/data
+      - rabta-backups:/backups
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      start_period: 180s
+      retries: 5
+    stop_grace_period: 30s
+
+volumes:
+  rabta-data:
+    name: rabta-e-hayat-data
+  rabta-backups:
+    name: rabta-e-hayat-backups

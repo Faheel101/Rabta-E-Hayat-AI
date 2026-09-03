@@ -1,0 +1,39 @@
+name: release-gates
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:///${{ github.workspace }}/ci-rabta.db
+      SYNTHETIC_DATA: "true"
+      QWEN_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Build stylesheet
+        run: npm ci && npm run css
+      - name: Build deterministic release data
+        run: python -m scripts.rebuild
+      - name: Run automated suite
+        run: pytest -q
+      - name: Validate release configuration
+        run: python -m scripts.release_check

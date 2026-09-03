@@ -1,0 +1,152 @@
+{% extends "layout/base.html" %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+<div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 sm:px-6">
+  <span class="badge-brand">{{ role_label }}</span>
+  <span class="text-2xs text-ink-muted">{{ t("onboarding.role_specific") }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 text-white shadow-card">
+  <div class="grid gap-6 px-5 py-7 sm:px-7 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,.6fr)] lg:items-end lg:px-9 lg:py-9">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-white/70">{{ t("onboarding.eyebrow") }}</p>
+      <h2 class="mt-3 max-w-3xl text-2xl font-bold leading-tight text-white sm:text-3xl">
+        {{ t("onboarding.welcome", name=first_name) }}
+      </h2>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-white/85 sm:text-base">{{ guide.mission }}</p>
+      <div class="mt-5 flex flex-wrap gap-2">
+        <a href="{{ guide.first_action.url }}" class="btn bg-white text-brand-700 hover:bg-brand-50">
+          {{ t("onboarding.start_with", task=guide.first_action.title) }}
+        </a>
+        <a href="#workflow" class="btn border border-white/35 bg-white/5 text-white hover:bg-white/10">
+          {{ t("onboarding.see_workflow") }}
+        </a>
+      </div>
+    </div>
+    <div class="rounded-xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+      <p class="text-2xs font-bold uppercase tracking-wider text-white/65">{{ t("onboarding.orientation_status") }}</p>
+      {% if onboarding.complete %}
+        <p class="mt-2 text-lg font-bold text-white">{{ t("onboarding.complete") }}</p>
+        <p class="mt-1 text-xs leading-relaxed text-white/75">{{ t("onboarding.complete_help") }}</p>
+      {% else %}
+        <p class="mt-2 text-lg font-bold text-white">{{ t("onboarding.three_steps") }}</p>
+        <p class="mt-1 text-xs leading-relaxed text-white/75">{{ t("onboarding.three_steps_help") }}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section id="workflow" class="mt-5" aria-labelledby="workflow-title">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <p class="text-2xs font-bold uppercase tracking-wider text-brand-600">{{ t("onboarding.start_here") }}</p>
+      <h2 id="workflow-title" class="mt-1 text-xl font-bold text-ink">{{ t("onboarding.your_workflow") }}</h2>
+      <p class="mt-1 max-w-3xl text-sm text-ink-muted">{{ t("onboarding.workflow_help") }}</p>
+    </div>
+    <span class="badge-neutral">{{ t("onboarding.about_minutes", minutes=3) }}</span>
+  </div>
+
+  <ol class="mt-4 grid gap-3 lg:grid-cols-3">
+    {% for task in guide.tasks %}
+      <li class="card relative overflow-hidden p-5">
+        <div class="absolute inset-x-0 top-0 h-1 {{ 'bg-brand-500' if loop.first else 'bg-info-400' if loop.index == 2 else 'bg-safe-500' }}"></div>
+        <div class="flex items-start justify-between gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700">
+            {{ icon(task.icon, "h-5 w-5") }}
+          </span>
+          <span class="num text-2xs font-bold uppercase tracking-wider text-ink-faint">{{ "%02d"|format(task.step) }}</span>
+        </div>
+        <h3 class="mt-4 text-base font-bold text-ink">{{ task.title }}</h3>
+        <p class="mt-2 text-sm leading-relaxed text-ink-muted">{{ task.body }}</p>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <a class="btn-secondary btn-sm" href="{{ task.url }}">{{ t("onboarding.open_task") }}</a>
+          {% if task.count is not none %}
+            <span class="{{ 'badge-warn' if task.count else 'badge-safe' }} num">
+              {{ t("onboarding.items_waiting", count=task.count) }}
+            </span>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ol>
+
+  <div class="note-info mt-3 flex items-start gap-3">
+    <span class="mt-0.5 shrink-0">{{ icon("route", "h-4 w-4") }}</span>
+    <p><strong>{{ t("onboarding.handoff") }}</strong> {{ guide.handoff }}</p>
+  </div>
+</section>
+
+<div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,.85fr)]">
+  <section class="card overflow-hidden">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("onboarding.read_every_screen") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("onboarding.read_every_screen_help") }}</p>
+      </div>
+    </div>
+    <dl class="grid gap-px bg-line sm:grid-cols-2">
+      {% for concept in ["scope", "urgency", "status", "evidence"] %}
+        <div class="bg-surface p-5">
+          <dt class="text-sm font-bold text-ink">{{ t("onboarding.concepts." ~ concept ~ ".title") }}</dt>
+          <dd class="mt-2 text-xs leading-relaxed text-ink-muted">{{ t("onboarding.concepts." ~ concept ~ ".body") }}</dd>
+        </div>
+      {% endfor %}
+    </dl>
+  </section>
+
+  <section class="card overflow-hidden">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("onboarding.safety_title") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("onboarding.safety_help") }}</p>
+      </div>
+      <span class="badge-safe">{{ t("onboarding.always_on") }}</span>
+    </div>
+    <ul class="divide-y divide-line px-5">
+      {% for promise in ["human", "scope", "audit", "synthetic"] %}
+        <li class="flex gap-3 py-3 text-xs leading-relaxed text-ink-secondary">
+          <span class="mt-0.5 text-safe-600">{{ icon("shield", "h-4 w-4") }}</span>
+          <span>{{ t("onboarding.safety." ~ promise) }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<section class="card mt-5 overflow-hidden">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">{{ t("onboarding.glossary") }}</h2>
+      <p class="mt-1 text-2xs text-ink-muted">{{ t("onboarding.glossary_help") }}</p>
+    </div>
+  </div>
+  <dl class="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-3">
+    {% for term in ["issuable", "quarantine", "fefo", "crossmatch", "cover", "intervals"] %}
+      <div class="bg-surface p-4">
+        <dt class="text-xs font-bold text-ink">{{ t("onboarding.glossary_terms." ~ term ~ ".term") }}</dt>
+        <dd class="mt-1 text-2xs leading-relaxed text-ink-muted">{{ t("onboarding.glossary_terms." ~ term ~ ".definition") }}</dd>
+      </div>
+    {% endfor %}
+  </dl>
+</section>
+
+<section class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-5 py-4">
+  <div>
+    <p class="text-sm font-bold text-ink">{{ t("onboarding.ready_title") }}</p>
+    <p class="mt-1 text-xs text-ink-muted">{{ t("onboarding.ready_help") }}</p>
+  </div>
+  {% if onboarding.complete %}
+    <form method="post" action="/app/getting-started/restart">
+      <button class="btn-secondary" type="submit">{{ t("onboarding.show_welcome_again") }}</button>
+    </form>
+  {% else %}
+    <form method="post" action="/app/getting-started/complete">
+      <input type="hidden" name="next" value="/app/dashboard">
+      <button class="btn-primary" type="submit">{{ t("onboarding.finish") }}</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

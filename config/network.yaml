@@ -1,0 +1,819 @@
+# Rabta-e-Hayat AI — single source of truth for domain parameters.
+#
+# Spec §15.5 requires one configuration file controlling the synthetic network,
+# date range, seed and event injection. This file also holds the clinical and
+# logistical parameters that spec §18 requires to be configuration rather than
+# code (cold-chain limits, reserve policy, transfusion probabilities), so they
+# can be validated by a transfusion medicine specialist without a code change.
+#
+# Environment-level settings (DATABASE_URL, DEMO_DATE, API keys) live in .env.
+
+seed: 42
+history_days: 547
+
+# ---------------------------------------------------------------------------
+# Synthetic demonstration profile
+# ---------------------------------------------------------------------------
+# Forecasting keeps the full eighteen-month aggregate history, while the
+# operational register materialises only a recent go-live window. This mirrors
+# a phased implementation: historical aggregates arrive from existing reports,
+# but named donor, unit and custody records begin at system go-live.
+synthetic:
+  profile: FACILITY_SCALE_V2
+  demand_volume_scale: 1.0
+  unit_history_days: 7
+  operational_window_days: 5
+  snapshot_history_days: 547
+  donor_register_per_facility:
+    RBC: 320
+    TERTIARY_HOSPITAL: 280
+    SPECIALIST_CENTRE: 240
+    DHQ: 220
+    THQ: 180
+
+
+# ---------------------------------------------------------------------------
+# Clinical request and issue workflow
+# ---------------------------------------------------------------------------
+# These are safe demonstration defaults, not a substitute for a facility SOP.
+# They are deliberately configured here so Punjab clinical governance can
+# approve or change them without editing the request service.
+clinical_operations:
+  crossmatch_valid_hours: 72
+  max_units_per_request: 20
+  emergency_release:
+    # Configurable demo policy. Clinical governance must sign off these values
+    # before any non-demonstration deployment.
+    allowed_urgencies: [EMERGENCY, MASSIVE_TRANSFUSION]
+    allowed_component_codes: [PRBC]
+    unknown_recipient_group_codes: [O-]
+  return_to_stock:
+    # A returned unit is only eligible to re-enter available inventory when the
+    # documented time out of controlled storage is within this threshold and
+    # the returning officer confirms that the cold chain remained intact.
+    max_minutes_out_of_controlled_storage: 30
+    rejected_discard_reason: BROKEN_COLD_CHAIN
+
+  allowed_urgencies: [ROUTINE, URGENT, EMERGENCY, MASSIVE_TRANSFUSION]
+  allowed_crossmatch_methods: [AHG_COOMBS, GEL_CARD, IMMEDIATE_SPIN, ELECTRONIC]
+  allowed_reaction_severities: [MILD, MODERATE, SEVERE, LIFE_THREATENING, DEATH]
+
+
+# ---------------------------------------------------------------------------
+# Pakistan calendar
+# ---------------------------------------------------------------------------
+# Hijri dates are computed with hijri-converter rather than hardcoded, so the
+# Ramadan/Eid/Muharram signal stays correct outside 2025–2026. Observed dates in
+# Pakistan can differ from the tabular calendar by a day; `year_offset_days`
+# applies a per-Hijri-year correction when the observed date is known.
+calendar:
+  year_offset_days: {}
+
+  ramadan:
+    hijri_month: 9
+  eid_ul_fitr:
+    hijri_month: 10
+    hijri_day: 1
+    window_days: 3
+  eid_ul_adha:
+    hijri_month: 12
+    hijri_day: 10
+    window_days: 4
+  muharram:
+    hijri_month: 1
+    from_day: 1
+    to_day: 10
+  post_eid_backlog_days: 10
+
+  # Mass-casualty events injected into history so the surge model has something
+  # to learn and the demo can point at a real one (spec §15.2).
+  mass_casualty_events:
+    - 2025-06-08
+    - 2025-07-05
+    - 2026-03-21
+    - 2026-05-29
+
+
+# ---------------------------------------------------------------------------
+# Travel time model (spec §8.2)
+# ---------------------------------------------------------------------------
+# MVP: haversine x road-circuity factor, with speed bands standing in for
+# province-level road classes. Production replaces this with a RoutingProvider.
+travel:
+  circuity_factor: 1.35
+  handling_overhead_minutes: 15
+  speed_bands_kph:
+    - {max_road_km: 20, kph: 24}     # intra-city, Pakistani urban traffic
+    - {max_road_km: 60, kph: 45}     # peri-urban and district roads
+    - {max_road_km: 150, kph: 60}    # national highway
+    - {max_road_km: null, kph: 80}   # motorway
+
+
+# ---------------------------------------------------------------------------
+# Reserve floor policy (spec §4.2, §8.1 constraint 1)
+# ---------------------------------------------------------------------------
+# A facility carries a component-level reserve total. This section splits that
+# total across the eight blood groups. A purely population-proportional split
+# gives O- a ~2.5% allocation, which is backwards: O- is the universal red cell
+# donor and the emergency stock, so it is weighted above its population share
+# and additionally protected by an absolute floor.
+reserve_policy:
+  demand_share_weight: 0.70
+  strategic_share_weight: 0.30
+
+  # Maximum ratio of (sum of group floors) to (component reserve total). Guards
+  # against the group floors summing to many times the facility's actual policy.
+  max_aggregate_inflation: 1.20
+
+  strategic_shares:
+    red:
+      {"O-": 0.28, "O+": 0.20, "B+": 0.14, "A+": 0.12, "B-": 0.09, "A-": 0.09, "AB+": 0.05, "AB-": 0.03}
+    plasma:
+      {"AB+": 0.24, "O+": 0.18, "B+": 0.16, "A+": 0.14, "AB-": 0.10, "O-": 0.08, "A-": 0.05, "B-": 0.05}
+    platelet:
+      {"O+": 0.22, "B+": 0.22, "A+": 0.16, "O-": 0.14, "AB+": 0.10, "B-": 0.07, "A-": 0.05, "AB-": 0.04}
+
+  # Absolute minimum units of a universal or scarce group a facility must hold,
+  # by facility type. Applies only to the groups listed.
+  strategic_minimum_units:
+    red:
+      "O-": {RBC: 10, TERTIARY_HOSPITAL: 4, SPECIALIST_CENTRE: 2, DHQ: 2, THQ: 1}
+      "O+": {RBC: 12, TERTIARY_HOSPITAL: 6, SPECIALIST_CENTRE: 3, DHQ: 3, THQ: 1}
+    plasma:
+      "AB+": {RBC: 6, TERTIARY_HOSPITAL: 3, SPECIALIST_CENTRE: 2, DHQ: 1, THQ: 1}
+    platelet:
+      "O-": {RBC: 2, TERTIARY_HOSPITAL: 1, SPECIALIST_CENTRE: 1, DHQ: 0, THQ: 0}
+
+
+# ---------------------------------------------------------------------------
+# Shortage risk (spec §6.5)
+# ---------------------------------------------------------------------------
+risk:
+  horizon_days: 14
+
+  # Lead time L to receive stock from the parent RBC. required_stock(d) is the
+  # P90 demand over [d, d+L] plus the reserve floor — a rolling window, not a
+  # cumulative sum from today.
+  lead_time_days:
+    RBC: 1
+    TERTIARY_HOSPITAL: 1
+    SPECIALIST_CENTRE: 2
+    DHQ: 2
+    THQ: 3
+    default: 2
+
+  # shortage_risk bucket thresholds: SAFE/WATCH/WARNING/CRITICAL boundaries.
+  buckets:
+    default: [0.10, 0.30, 0.60]
+    platelet: [0.08, 0.25, 0.50]
+
+
+# ---------------------------------------------------------------------------
+# Demand distribution
+# ---------------------------------------------------------------------------
+# Shortage and waste probabilities are derived from the forecast quantile
+# spread. sigma is recovered from (P90 - P10) / (2 * z), then a count
+# distribution is moment-matched to (mean, variance).
+demand_distribution:
+  quantile_z: 1.2816
+  min_sigma: 0.35
+
+
+# ---------------------------------------------------------------------------
+# Storage (spec §18)
+# ---------------------------------------------------------------------------
+# Storage temperatures are a clinical parameter, not a detail of whichever
+# module happens to write a reading. A platelet held at 4 degrees loses
+# function; red cells frozen without cryoprotectant haemolyse. Both ranges
+# belong somewhere a transfusion specialist can check.
+storage:
+  location_types:
+    BLOOD_BANK_FRIDGE:
+      name: Blood bank refrigerator
+      short: FRIDGE
+      min_c: 2.0
+      max_c: 6.0
+      capacity_units: 500
+      has_agitator: false
+      is_quarantine: false
+
+    PLASMA_FREEZER:
+      name: Plasma freezer
+      short: FREEZER
+      min_c: -40.0
+      max_c: -25.0
+      capacity_units: 800
+      has_agitator: false
+      is_quarantine: false
+
+    PLATELET_AGITATOR:
+      name: Platelet incubator and agitator
+      short: PLT
+      min_c: 20.0
+      max_c: 24.0
+      capacity_units: 120
+      # Platelets must be agitated continuously or they clump and are lost.
+      has_agitator: true
+      is_quarantine: false
+
+    QUARANTINE_FRIDGE:
+      name: Quarantine refrigerator
+      short: QFRIDGE
+      min_c: 2.0
+      max_c: 6.0
+      capacity_units: 200
+      has_agitator: false
+      # Untested and reactive stock is stored physically apart, so an untested
+      # bag cannot be picked off the issuable shelf by mistake.
+      is_quarantine: true
+
+    QUARANTINE_FREEZER:
+      name: Quarantine freezer
+      short: QFREEZER
+      min_c: -40.0
+      max_c: -25.0
+      capacity_units: 300
+      has_agitator: false
+      # Frozen plasma needs its own quarantine space rather than sharing the
+      # quarantine fridge. Sending untested FFP to a 2-6°C fridge to segregate
+      # it thaws it — the segregation would cost more than the risk it removes.
+      # And frozen products keep for a year, so an untested bag can sit on the
+      # issuable shelf for a very long time waiting to be picked by mistake.
+      #
+      # Platelets get no equivalent: they live five days, so quarantine is
+      # transient, and a second incubator at every facility is not a realistic
+      # ask. They stay in the shared agitator and rely on their status.
+      is_quarantine: true
+
+  # When a store going out of range actually counts against the stock inside it.
+  #
+  # This threshold has to exist, and it has to be here rather than buried in
+  # code, because both extremes are wrong. Count every out-of-range reading and
+  # a fridge door held open for one minute condemns eight thousand units, so the
+  # flag gets ignored. Count none and the flag means nothing at all. A unit
+  # carrying this flag cannot be transferred, so the line decides whether real
+  # stock moves.
+  #
+  # An excursion counts against a unit if EITHER it lasted longer than
+  # `max_minutes` — the familiar 30-minute convention for red cells out of
+  # controlled storage — OR it went further than `max_excess_c` beyond the band,
+  # on the reasoning that a short, severe warming does damage a slow drift does
+  # not.
+  #
+  # These numbers are a defensible starting point, NOT a validated standard.
+  # They need a transfusion specialist's sign-off against local SOPs before this
+  # system is used to decide that a real unit may not move.
+  breach_thresholds:
+    max_minutes: 30
+    max_excess_c: 4.0
+
+  # Why a unit was thrown away, as a fixed list rather than free text.
+  #
+  # Wastage is the number a blood bank is judged on, and it is only reducible if
+  # the cause is known. "Discarded — see notes" across four hundred units tells
+  # you nothing; four hundred units under BROKEN_COLD_CHAIN tells you to fix a
+  # fridge, and under EXPIRY tells you to fix ordering. These are the causes an
+  # operator picks from; the free-text note sits alongside, never instead.
+  #
+  # `preventable` marks the ones that represent a failure of process rather than
+  # an unavoidable clinical fact. A haemolysed unit may be nobody's fault; a unit
+  # lost to a fridge left open is.
+  discard_reasons:
+    EXPIRY:
+      label: Expired on the shelf
+      preventable: true
+    BROKEN_COLD_CHAIN:
+      label: Cold chain breach
+      preventable: true
+    HAEMOLYSIS:
+      label: Visible haemolysis
+      preventable: false
+    CLOTS:
+      label: Clots in the bag
+      preventable: false
+    LIPAEMIC:
+      label: Lipaemic unit
+      preventable: false
+    BAG_DAMAGE:
+      label: Bag damaged or leaking
+      preventable: true
+    UNDER_COLLECTION:
+      label: Under-collected volume
+      preventable: false
+    LABEL_ERROR:
+      label: Labelling error
+      preventable: true
+    QUALITY_CONTROL:
+      label: Failed quality control
+      preventable: false
+    RETURNED_UNSUITABLE:
+      label: Returned from ward, no longer issuable
+      preventable: true
+    OTHER:
+      label: Other
+      preventable: false
+
+  # A reading outside the range for longer than this is a breach rather than a
+  # transient, and the units in that store need assessing.
+  excursion_minutes_before_breach: 30
+
+
+# ---------------------------------------------------------------------------
+# Component processing (spec §19.2)
+# ---------------------------------------------------------------------------
+# Separating a whole blood bag into components is time-critical and lossy, and
+# both facts belong here rather than in the code that happens to implement them.
+processing:
+  # Hours from collection within which each component must be separated. Past
+  # the window that component can no longer be made from the bag — the rest of
+  # the bag is still fine, which is why this is per component and not per bag.
+  #
+  # Platelets are the binding one: they must come off before the unit is chilled
+  # and lose function quickly at 4 degrees. Red cells and plasma have a whole
+  # day, and plasma frozen inside 8 hours qualifies as FFP where later
+  # separation only makes it plasma.
+  separation_window_hours:
+    PLT_RD: 8
+    PLT_APH: 8
+    FFP: 8
+    PRBC: 24
+    CRYO: 24
+    WB: 24
+
+  # What a bag is expected to yield, by the kit used at collection. The
+  # technologist can produce less than this — a failed spin, a lipaemic unit —
+  # and the difference is recorded rather than hidden.
+  recipes:
+    TRIPLE: [PRBC, PLT_RD, FFP]
+    DOUBLE: [PRBC, FFP]
+    SINGLE: [WB]
+    APHERESIS_KIT: [PLT_APH]
+
+  # Fraction of separations that fall short of the recipe, by component. These
+  # are the loss rates a bank tries to reduce, and a report that can only ever
+  # show 100% yield is one nobody reads.
+  #
+  # SOURCE: indicative. Platelet loss dominates because the spin is the fiddly
+  # step and a lipaemic or under-filled bag is discarded at that point.
+  yield_loss_rate:
+    PLT_RD: 0.055
+    PLT_APH: 0.02
+    FFP: 0.015
+    PRBC: 0.008
+    CRYO: 0.03
+    WB: 0.004
+
+  loss_reasons:
+    PLT_RD: [FAILED_SPIN, LIPAEMIC, UNDER_FILLED, BAG_DAMAGED]
+    PLT_APH: [MACHINE_FAULT, DONOR_REACTION_ABORTED]
+    FFP: [LIPAEMIC, HAEMOLYSED, BAG_DAMAGED]
+    PRBC: [HAEMOLYSED, BAG_DAMAGED]
+    CRYO: [INSUFFICIENT_PLASMA, BAG_DAMAGED]
+    WB: [BAG_DAMAGED]
+
+
+# ---------------------------------------------------------------------------
+# Expiry rescue (spec §7)
+# ---------------------------------------------------------------------------
+expiry:
+  handling_buffer_hours: 12
+  rescue_window_days: {PLT_RD: 5, PLT_APH: 5, WB: 14, PRBC: 14, FFP: 90, CRYO: 90}
+  tiers: {act_now: 0.60, watch: 0.30}
+
+
+# ---------------------------------------------------------------------------
+# Optimizer (spec §8.1)
+# ---------------------------------------------------------------------------
+optimizer:
+  horizon_days: 3
+  max_shipments_per_run: 12
+
+  # Pre-filter width: how many nearest surplus facilities are considered as
+  # sources for each facility in deficit (spec §8.3). 0 disables it.
+  #
+  # Measured at 30 facilities: capping at 6 halved the model (13,905 candidate
+  # routes to 7,065) but the solver still did not prove optimality inside 30s,
+  # because the binding difficulty is choosing which 12 shipments to run, not the
+  # number of variables. The cap only removed useful routes and made the plan
+  # worse (654 shortages averted, down from 725), so it is off. Revisit it for a
+  # national-scale network, where spec §8.3 also offers per-division
+  # decomposition.
+  max_sources_per_deficit: 0
+
+  # The hard interactive problem is choosing at most 12 physical dispatch
+  # routes from hundreds of possible source/destination pairs. Rank route pairs
+  # on shortage severity, compatibility, distance, and expiry rescue; retain
+  # three choices per destination, then the strongest province-wide pairs.
+  # This bounds planning latency while all clinical rules stay in the solver.
+  max_route_pairs_interactive: 120
+  min_route_pairs_per_destination: 3
+  # Sequential CP-SAT is deliberate for the Docker/macOS demo runtime: pandas'
+  # Arrow dependency and OR-Tools bundle different Abseil thread primitives.
+  num_search_workers: 1
+  time_limit_seconds: {interactive: 30, nightly: 300}
+  weights:
+    shortage: 1000
+    waste: 200
+    transport: 1
+    fixed_dispatch: 25
+    substitution: 15
+    capacity: 50
+  # ABO-incompatible platelets may be issued in shortage but require an
+  # explicit override (spec §19.1). Off by default for routine plans.
+  allow_override_compatibility: false
+
+
+# ---------------------------------------------------------------------------
+# Synthetic supply generation (spec §15.3)
+# ---------------------------------------------------------------------------
+supply:
+  # Days of cover facilities actually hold. These are calibrated so the
+  # generator reproduces the measured outcome rather than an idealised one: the
+  # Shalamar Lahore audit found 13.5% wastage with 96% of it expiry-driven, and a
+  # bank holding a textbook 6 days of red cells with disciplined FEFO would waste
+  # around 3%. The gap is real holding behaviour — group-level mismatch, lumpy
+  # camp collections, replacement-donor units credited but not used. Rather than
+  # model each of those separately with invented parameters, the holding level is
+  # fitted to the one number that was actually measured.
+  cover_days: {PRBC: 6, WB: 5, PLT_RD: 4, PLT_APH: 4, FFP: 18, CRYO: 18}
+
+  # Regional Blood Centres are hubs: they stock against their spokes' demand,
+  # not their own. Without this the network has no structural surplus and the
+  # optimizer has nothing to redistribute.
+  hub:
+    spoke_demand_share: 0.10
+    cover_days_multiplier: 1.25
+
+  # Spec §15.3: some facilities are deliberately configured to over-order.
+  # This is what generates the wastage the rescue engine finds.
+  over_order:
+    facility_fraction: 0.30
+    factor_range: [2.20, 3.00]
+    rare_group_extra_factor: 1.35
+
+  # The other half of the story: chronically under-resourced facilities. Without
+  # these the network wastes without ever running short, and preventable
+  # shortage and preventable expiry never occur on the same day.
+  under_order:
+    facility_fraction: 0.38
+    factor_range: [0.25, 0.50]
+
+  # Spec §15.4 realism targets, asserted by the generator's test suite.
+  realism:
+    wastage_pct_range: [10.0, 15.0]
+    expiry_share_of_wastage_min: 0.90
+    unmet_demand_pct_range: [3.0, 7.0]
+  # Negative-binomial dispersion for daily demand: variance = mean + mean^2/k,
+  # so CV^2 = 1/mean + 1/k. At k=20 a series averaging 35 units/day has a CV of
+  # about 0.28, which is in the range transfusion demand actually shows. The
+  # previous hardcoded k=5 implied a CV near 0.50 and made the spec's 25% WAPE
+  # target mathematically unreachable.
+  demand_dispersion_k: 20.0
+
+  screening_failure_rate: 0.03
+
+  # Share of issues that follow first-expiry-first-out. Strict FEFO is what this
+  # product recommends; assuming the baseline already achieves it would engineer
+  # away a real and measurable slice of preventable expiry.
+  fefo_compliance: 0.55
+
+
+# ---------------------------------------------------------------------------
+# Emergency simulator (spec §9.3, §19.2)
+# ---------------------------------------------------------------------------
+# Spec §9.3: never hardcode these.
+simulation:
+  default_seed: 42
+  default_iterations: 1000
+  min_iterations: 100
+  max_iterations: 5000
+  max_casualties: 5000
+
+  presets:
+    BUS_ACCIDENT:
+      name: Major bus accident — Motorway M2
+      casualties: 60
+      severity_mix: {MINOR: 0.35, MODERATE: 0.30, SEVERE: 0.25, CRITICAL: 0.10}
+      onset_profile: RAMP_6H
+      duration_hours: 12
+      impact_radius_km: 80
+    EARTHQUAKE:
+      name: 6.5 magnitude urban earthquake
+      casualties: 420
+      severity_mix: {MINOR: 0.30, MODERATE: 0.30, SEVERE: 0.25, CRITICAL: 0.15}
+      onset_profile: INSTANT
+      duration_hours: 24
+      impact_radius_km: 120
+      facilities_degraded_pct: 35
+      degraded_capacity_loss_pct: 50
+      roads_blocked: true
+    FLOOD:
+      name: Multi-district monsoon flood
+      casualties: 260
+      severity_mix: {MINOR: 0.45, MODERATE: 0.30, SEVERE: 0.18, CRITICAL: 0.07}
+      onset_profile: MULTI_DAY
+      duration_hours: 72
+      impact_radius_km: 160
+      facilities_degraded_pct: 20
+      degraded_capacity_loss_pct: 35
+      roads_blocked: true
+    BLAST:
+      name: Urban blast mass-casualty incident
+      casualties: 110
+      severity_mix: {MINOR: 0.20, MODERATE: 0.25, SEVERE: 0.30, CRITICAL: 0.25}
+      onset_profile: INSTANT
+      duration_hours: 12
+      impact_radius_km: 60
+
+  p_transfusion: {MINOR: 0.02, MODERATE: 0.25, SEVERE: 0.70, CRITICAL: 0.95}
+  mean_prbc_units: {MINOR: 0.0, MODERATE: 2.0, SEVERE: 4.0, CRITICAL: 8.0}
+  default_severity_mix: {MINOR: 0.35, MODERATE: 0.30, SEVERE: 0.25, CRITICAL: 0.10}
+
+  massive_transfusion_probability: 0.40
+  mtp_ffp_ratio: 1.0
+  mtp_rbc_per_platelet_dose: 6
+
+  # Fraction of a facility's reserve floor released under a declared emergency.
+  emergency_reserve_release: 0.50
+
+  # Share of a group's free stock that can realistically be mobilised into a
+  # surge. Compounds with the reserve release above and the committed-demand
+  # subtraction, so the three together are a substantial discount and should be
+  # reviewed as one number by a transfusion medicine specialist.
+  group_surge_availability:
+    "O-": 0.15
+    "B-": 0.25
+    "A-": 0.30
+    "AB-": 0.15
+    default: 0.70
+  gravity_tau_minutes: {trauma: 30, other: 45}
+  facility_share_cap: 0.35
+  surge_capacity_per_100_beds: 18
+  rbc_surge_capacity: 80
+  road_block_travel_multiplier: 1.75
+  max_emergency_transfers: 20
+
+  donor: {yield_per_donor: 1.0, show_up_rate: 0.55, eligibility_rate: 0.85}
+
+
+# ---------------------------------------------------------------------------
+# Alert governance (spec §11)
+# ---------------------------------------------------------------------------
+alerts:
+  cooldown_hours: 6
+  critical_escalation_minutes: 60
+  transfer_overdue_minutes: 120
+  stale_feed_hours: 36
+  channels:
+    MEDIUM: [IN_APP, EMAIL]
+    HIGH: [IN_APP, EMAIL]
+    CRITICAL: [IN_APP, EMAIL]
+
+
+# ---------------------------------------------------------------------------
+# Impact valuation (spec §19.2)
+# ---------------------------------------------------------------------------
+impact:
+  cost_per_unit_pkr: 15000
+  units_per_transfused_patient: 2.1
+
+# ---------------------------------------------------------------------------
+# ISBT 128 labelling (spec §1.2, §1.3)
+# ---------------------------------------------------------------------------
+# Verified against ICCBBA primary sources. The check-character algorithm passes
+# four published test vectors (tests/clinical/test_isbt128.py).
+#
+# BLOCKED ON LICENSING, NOT ON CODE. A conformant Donation Identification Number
+# requires an ICCBBA-assigned Facility Identification Number, and the Product
+# Description Code Database requires a licence. Until both are held, this system
+# emits structurally-shaped provisional identifiers and says so in the UI. A
+# self-invented FIN risks colliding with a real foreign facility's, which would
+# break the global uniqueness the standard exists to provide.
+labelling:
+  isbt128:
+    # Set to the ICCBBA-assigned FIN once registered. May be a single string, or
+    # a mapping of facility_code -> FIN when facilities register separately.
+    fin: null
+    fin_is_provisional: true
+
+    din:
+      length: 13
+      check_character:
+        algorithm: ISO_7064_MOD_37_2
+      eye_readable_grouping: UNGROUPED
+
+    # Populate only from the licensed ICCBBA Product Description Code Database.
+    # A nearly-right E-code describes a different product.
+    product_code_table: {}
+
+
+# ---------------------------------------------------------------------------
+# Donor eligibility
+# ---------------------------------------------------------------------------
+# PROVENANCE AND ITS LIMITS - read before changing any value here.
+#
+# The Pakistani values below come from the Punjab Blood Transfusion Authority
+# "SOP for Blood Bank" (202 pages), quotations confirmed verbatim from the
+# source document during verification. Three caveats that must not be lost:
+#
+#   1. Every Pakistani number here is PROVINCIAL (Punjab), not national. The
+#      SBTP national standard could not be retrieved.
+#   2. The source is an UNSIGNED, UNDATED DRAFT: all 202 pages carry
+#      "Version 1.0 / Valid from: [blank] / Effective Date: [blank]" with three
+#      empty signature blocks.
+#   3. The SOP's donor history questionnaire (Annex 4) is a verbatim
+#      transcription of the AABB Full-Length Donor History Questionnaire, so
+#      questionnaire-derived intervals are US guidance carried into a Pakistani
+#      document, not independent Pakistani policy.
+#
+# Anything marked low confidence, or listed under requires_clinical_signoff,
+# must be reviewed by a transfusion medicine specialist before any pilot.
+donor_eligibility:
+  standard_profile: PBTA_PUNJAB
+  source_note: >-
+    Punjab Blood Transfusion Authority SOP for Blood Bank, unsigned draft
+    v1.0; WHO 2012 Blood Donor Selection and FDA 21 CFR 630.10(f) used where
+    the SOP is silent. Provincial, not national.
+
+  age_years_min: 18
+  age_years_max: 60
+
+  haemoglobin:
+    # The SOP carries two methods with different cutoffs. Which applies depends
+    # on what the bench actually uses, so the method is configured not assumed.
+    method: CUSO4
+    cuso4_gdl_all: 12.5
+    meter_gdl_female: 12.5
+    meter_gdl_male: 13.5
+    low_hb_recheck_days: 30
+    cuso4_failure_overridable_by_meter: false
+
+  weight_kg_min_full_volume: 50
+  weight_kg_min_reduced_volume: 45
+  collection_volume_ml:
+    full: 450
+    reduced: 350
+    tolerance_pct: 10
+  # Do NOT reintroduce a proportional (weight/50)*450 formula. It is tertiary
+  # training material, not the Pakistani rule, and it silently changes the
+  # blood-to-anticoagulant ratio.
+  max_fraction_of_blood_volume: 0.13
+
+  # PBTA's diastolic floor of 70 is the strictest of any standard reviewed
+  # (WHO 60, FDA 50) and its systolic ceiling of 140 is 40 mmHg below FDA's.
+  # Expect a high deferral rate; flagged for review below.
+  systolic_bp_mmhg: [100, 140]
+  diastolic_bp_mmhg: [70, 90]
+  pulse_bpm: [60, 100]
+  temperature_celsius_max: 37.5
+
+
+donation_interval:
+  # Sex-dependence is structural, not a footnote. The SOP states: "not less than
+  # three months for males and four months for females."
+  whole_blood_days_male: 90
+  whole_blood_days_female: 120
+  max_donations_per_year: null
+  # No Pakistani source exists for apheresis intervals; WHO and FDA disagree by
+  # up to 14x. Do not mix regimes.
+  apheresis_regime: WHO_2012
+  apheresis_platelet_days: 28
+  apheresis_plasma_days: 14
+
+
+# Deferral rules. `kind` is structural: TIMED carries a day count, PERMANENT
+# never lifts, CONDITIONAL has no fixed clock and is resolved by a later
+# assessment. Encoding "conditional" as zero days with a false permanent flag -
+# as the source research proposed - would score a currently pregnant donor as
+# eligible today. The enum exists to make that impossible.
+# `applies_to_sex` marks a rule that can only ever apply to one sex. Without
+# it a consumer has to infer applicability from the reason code, and the
+# synthetic generator inferred wrongly — 241 male donors were recorded as
+# deferred for pregnancy, post-delivery or breastfeeding.
+deferral_rules:
+  ACUTE_ILLNESS_FEVER:       {kind: TIMED, days: 14, confidence: high}
+  LOW_HAEMOGLOBIN:           {kind: TIMED, days: 30, confidence: medium}
+  UNDERWEIGHT:               {kind: CONDITIONAL, confidence: high}
+  BP_OUT_OF_RANGE:           {kind: CONDITIONAL, confidence: high}
+  PULSE_OUT_OF_RANGE:        {kind: CONDITIONAL, confidence: high}
+  RECENT_DONATION:           {kind: TIMED, days_male: 90, days_female: 120, confidence: high}
+  MALARIA_ILLNESS:           {kind: TIMED, days: 90, confidence: high, requires: malaria_screening_enabled}
+  MALARIA_FOREIGN_TRAVEL:    {kind: TIMED, days: 180, confidence: high}
+  DENGUE:                    {kind: TIMED, days: 180, confidence: high}
+  TYPHOID:                   {kind: TIMED, days: 365, confidence: low}
+  TATTOO_PIERCING:           {kind: TIMED, days: 365, confidence: high}
+  ACUPUNCTURE:               {kind: TIMED, days: 365, confidence: high}
+  TRANSFUSION_RECEIVED:      {kind: TIMED, days: 365, confidence: high}
+  MAJOR_SURGERY:             {kind: TIMED, days: 365, confidence: high}
+  DENTAL_EXTRACTION:         {kind: TIMED, days: 7, confidence: high}
+  PREGNANCY_CURRENT:         {kind: CONDITIONAL, confidence: high, applies_to_sex: FEMALE}
+  POST_DELIVERY:             {kind: TIMED, days: 180, confidence: high, applies_to_sex: FEMALE}
+  BREASTFEEDING:             {kind: CONDITIONAL, confidence: low, applies_to_sex: FEMALE}
+  VACCINATION_LIVE:          {kind: TIMED, days: 28, confidence: medium}
+  VACCINATION_INACTIVATED:   {kind: TIMED, days: 14, confidence: low}
+  NEEDLESTICK_EXPOSURE:      {kind: TIMED, days: 365, confidence: high}
+  POST_EXPOSURE_PROPHYLAXIS: {kind: TIMED, days: 365, confidence: high}
+  IMPRISONMENT:              {kind: TIMED, days: 365, confidence: medium}
+  EPILEPSY:                  {kind: TIMED, days: 1095, confidence: low}
+  HIGH_RISK_CONTACT:         {kind: TIMED, days: 365, confidence: medium}
+  HIGH_RISK_BEHAVIOUR_OWN:   {kind: PERMANENT, confidence: medium}
+  HIV_POSITIVE:              {kind: PERMANENT, confidence: high}
+  HEPATITIS_B_HISTORY:       {kind: PERMANENT, confidence: medium}
+  HEPATITIS_C_HISTORY:       {kind: PERMANENT, confidence: high}
+  SYPHILIS_HISTORY:          {kind: TIMED, days: 365, confidence: low}
+  TUBERCULOSIS:              {kind: PERMANENT, confidence: low}
+  REACTIVE_SCREENING:        {kind: PERMANENT, confidence: high}
+
+
+# Rules where the sources genuinely conflict and a specialist must choose. The
+# engine applies the configured default and records which limb it used, so the
+# decision is auditable against what was actually done.
+requires_clinical_signoff:
+  SYPHILIS_HISTORY:
+    applied: PBTA_365_DAYS
+    alternative: WHO_PERMANENT
+    note: >-
+      Punjab defers 12 months after treatment; WHO defers permanently after any
+      diagnosis, because serology cannot distinguish treated from active.
+  TUBERCULOSIS:
+    applied: PBTA_PERMANENT
+    alternative: WHO_2_YEARS_AFTER_CURE
+    note: >-
+      A permanent bar in a high-TB-burden country has a large donor-base cost.
+      WHO notes no published transfusion transmission of tuberculosis.
+  HEPATITIS_B_HISTORY:
+    applied: PBTA_PERMANENT
+    alternative: WHO_12_MONTHS_WITH_MARKER_REENTRY
+    note: >-
+      WHO's re-entry pathway needs anti-HBc and anti-HBs testing, outside
+      Pakistan's federal minimum panel, so permanent is defensible.
+  EPILEPSY:
+    applied: TIMED_1095_DAYS
+    alternative: PBTA_PERMANENT
+    note: >-
+      The source contradicts itself - epilepsy appears on the permanent list
+      and in the temporary table three rows later.
+  BREASTFEEDING:
+    applied: CONDITIONAL_UNTIL_WEANED
+    alternative: DELIVERY_PLUS_180
+    note: >-
+      The SOP gives 6 months post-delivery in one row and 12 months for nursing
+      mothers four rows later. Both cannot be right.
+  TYPHOID:
+    applied: PBTA_365_DAYS
+    alternative: WHO_28_DAYS
+    note: >-
+      A 13x spread resting on one line in one unsigned provincial SOP.
+  DIASTOLIC_FLOOR:
+    applied: PBTA_70_MMHG
+    alternative: WHO_60_MMHG
+    note: >-
+      Strictest of any standard reviewed; will drive deferral volume in a
+      population with high hypertension prevalence.
+
+
+tti_panel:
+  # Malaria screening is not optional here: the absence of a domestic travel
+  # deferral is only safe because every donation is screened for malarial
+  # parasite. Disabling this forces the travel deferral back on, which
+  # core/eligibility.py enforces rather than trusting the operator to remember.
+  malaria_screening_enabled: true
+  required_tests: [HIV, HBSAG, HCV, SYPHILIS, MALARIA]
+
+  # A reactive screening result is not a diagnosis. Screening assays are tuned
+  # for sensitivity — they must not miss an infected unit — and they buy that
+  # sensitivity with false positives. Treating a reactive screen as a confirmed
+  # infection would permanently and wrongly label roughly half of the donors it
+  # flags, which is a real harm to a real person and also corrupts any
+  # prevalence figure derived from this system.
+  #
+  # So: the unit is discarded on the screening result (the supply is protected
+  # immediately), and the DONOR's status waits for confirmation.
+  confirmatory:
+    enabled: true
+
+    # Fraction of screen-reactive donations that confirm positive. These are
+    # order-of-magnitude figures for a low-to-moderate prevalence donor
+    # population; syphilis is lowest because RPR has well-known biological
+    # false positives, HBsAg highest because the screening assay is specific.
+    # SOURCE: indicative, not from a Pakistani published series. Any prevalence
+    # figure this system reports must say so.
+    confirmation_rate:
+      HIV: 0.22
+      HBSAG: 0.55
+      HCV: 0.45
+      SYPHILIS: 0.35
+      MALARIA: 0.50
+
+    method:
+      HIV: Western blot
+      HBSAG: Neutralisation assay
+      HCV: RIBA
+      SYPHILIS: TPHA
+      MALARIA: Microscopy (thick film)
+
+    # A donor whose confirmatory test is negative is not cleared outright — the
+    # screen reacted for some reason. They are deferred, re-tested after this
+    # interval, and reinstated only then. A confirmed positive is deferred
+    # permanently and referred for counselling and treatment.
+    unconfirmed_deferral_days: 180

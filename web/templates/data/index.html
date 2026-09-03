@@ -1,0 +1,258 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty %}
+{% from "layout/icons.html" import icon %}
+
+{% block content %}
+<div class="mx-auto max-w-[1480px] space-y-5">
+  <section class="overflow-hidden rounded-2xl border border-line bg-gradient-to-br from-white via-white to-info-50 shadow-card">
+    <div class="grid gap-4 px-5 py-5 lg:grid-cols-[1.45fr_.75fr] lg:px-6">
+      <div>
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <span class="badge-info badge-dot">{{ t("data.canonical_gateway") }}</span>
+          <span class="badge-neutral">API v1</span>
+          <span class="badge-neutral">FHIR R4</span>
+          <span class="badge-neutral">HL7 v2</span>
+        </div>
+        <h2 class="max-w-3xl text-xl font-semibold tracking-tight text-ink sm:text-2xl">{{ t("data.hero_title") }}</h2>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-ink-secondary">{{ t("data.hero_body") }}</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a class="btn-primary" href="#manual-upload">{{ t("data.new_import") }}</a>
+          <a class="btn-secondary" href="/api/docs" target="_blank" rel="noopener">{{ t("data.open_api_docs") }}</a>
+          <a class="btn-ghost" href="#feeds">{{ t("data.review_feeds") }}</a>
+        </div>
+      </div>
+      <details class="disclosure-card self-start bg-white/80 shadow-none">
+        <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title text-info-700">{{ t("data.safety_contract") }}</strong><span class="disclosure-hint">{{ t("common.supporting_details_help") }}</span></span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+        <ol class="space-y-3 border-t border-info-100 p-4 text-sm text-ink-secondary">
+          {% for number, title, body in [
+            ("01", t("data.contract_archive"), t("data.contract_archive_body")),
+            ("02", t("data.contract_validate"), t("data.contract_validate_body")),
+            ("03", t("data.contract_commit"), t("data.contract_commit_body")),
+          ] %}
+          <li class="flex gap-3">
+            <span class="num grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-info-50 text-2xs font-bold text-info-700">{{ number }}</span>
+            <span><strong class="block text-ink">{{ title }}</strong><span class="text-xs">{{ body }}</span></span>
+          </li>
+          {% endfor %}
+        </ol>
+      </details>
+    </div>
+  </section>
+
+  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {{ kpi(t("data.healthy_feeds"), counts.healthy|num, foot=t("data.reporting_normally"), tone="safe" if counts.healthy == counts.facilities else "info") }}
+    {{ kpi(t("data.degraded_feeds"), counts.degraded|num, foot=t("data.visible_not_dropped"), tone="warn" if counts.degraded else "safe") }}
+    {{ kpi(t("data.quarantine_rows"), counts.quarantine|num, foot=t("data.blocked_from_domain"), tone="warn" if counts.quarantine else "safe") }}
+    {{ kpi(t("data.open_reconciliation"), counts.open_issues|num, foot=t("data.accountable_resolution"), tone="critical" if counts.open_issues else "safe") }}
+  </section>
+  <div class="supporting-strip"><strong class="num text-info-700">{{ counts.facilities|num }}</strong><span>{{ t("data.connected_facilities") }} · {{ t("data.tenant_scoped") }}</span></div>
+
+  <section id="manual-upload" class="grid gap-5 xl:grid-cols-[1fr_.85fr]">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">{{ t("data.manual_upload") }}</h2>
+          <p class="card-hint">{{ t("data.manual_upload_hint") }}</p>
+        </div>
+        <span class="badge-brand">{{ t("data.preview_first") }}</span>
+      </div>
+      <form method="post" action="/data/imports/preview" enctype="multipart/form-data" class="card-pad space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="facility_id">{{ t("data.facility") }}</label>
+            <select class="field" id="facility_id" name="facility_id" required>
+              {% for facility in upload_facilities %}
+              <option value="{{ facility.id }}" {% if facility.id == principal.facility_id %}selected{% endif %}>{{ facility.name_en }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="data_type">{{ t("data.dataset") }}</label>
+            <select class="field" id="data_type" name="data_type" required>
+              <option value="INVENTORY">{{ t("data.inventory_units") }}</option>
+              <option value="DEMAND">{{ t("data.demand_events") }}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label" for="source_file">{{ t("data.csv_file") }}</label>
+          <input class="field file:me-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-700" id="source_file" name="source_file" type="file" accept=".csv,text/csv" required>
+          <p class="hint">{{ t("data.csv_limits") }}</p>
+        </div>
+        <div class="note-info text-xs">
+          <strong>{{ t("data.identity_guard") }}</strong> {{ t("data.identity_guard_body") }}
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap gap-2 text-xs">
+            <a class="link" href="/data/templates/inventory.csv">{{ t("data.inventory_template") }}</a>
+            <span class="text-line-strong">·</span>
+            <a class="link" href="/data/templates/demand.csv">{{ t("data.demand_template") }}</a>
+          </div>
+          <button class="btn-primary" type="submit">{{ t("data.validate_preview") }}</button>
+        </div>
+      </form>
+    </div>
+
+    <details class="disclosure-card self-start">
+      <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("data.adapter_contract") }}</strong><span class="disclosure-hint">{{ t("data.one_pipeline") }}</span></span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+      <div class="grid gap-3 border-t border-line p-4 sm:grid-cols-2">
+        {% for mode, tone, title, body, link, link_text in [
+          ("CSV", "brand", t("data.adapter_manual"), t("data.adapter_manual_body"), "/data/templates/inventory.csv", t("data.download_example")),
+          ("FHIR R4", "info", t("data.adapter_fhir"), t("data.adapter_fhir_body"), "/data/examples/fhir-bundle.json", t("data.download_example")),
+          ("HL7 v2", "warn", t("data.adapter_hl7"), t("data.adapter_hl7_body"), "/data/examples/hl7v2-message.txt", t("data.download_example")),
+          ("SIM", "safe", t("data.adapter_simulated"), t("data.adapter_simulated_body"), "/api/docs", t("data.view_contract")),
+        ] %}
+        <div class="rounded-xl border border-line bg-surface-sunken/45 p-3.5">
+          <span class="badge-{{ tone }}">{{ mode }}</span>
+          <h3 class="mt-2 text-sm font-semibold">{{ title }}</h3>
+          <p class="mt-1 text-xs leading-5 text-ink-muted">{{ body }}</p>
+          <a class="link mt-2 inline-block text-xs" href="{{ link }}" {% if link == '/api/docs' %}target="_blank" rel="noopener"{% endif %}>{{ link_text }}</a>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+
+  <details id="feeds" class="disclosure-card scroll-mt-20">
+    <summary class="disclosure-summary">
+      <span class="disclosure-copy"><strong class="disclosure-title">{{ t("data.feed_status_board") }}</strong><span class="disclosure-hint">{{ t("data.feed_status_hint") }}</span></span>
+      <span class="text-xs text-ink-muted">{{ feed_rows|length }} {{ t("data.facilities_lower") }}</span>
+      {{ icon("chevron-down", "nav-disclosure-chevron") }}
+    </summary>
+    <div class="grid gap-3 border-t border-line p-4 md:grid-cols-2 xl:grid-cols-3">
+      {% for item in feed_rows %}
+      {% set status_class = 'badge-safe' if item.status == 'HEALTHY' else ('badge-warn' if item.status in ['DEGRADED','STALE'] else 'badge-neutral') %}
+      <article class="rounded-xl border border-line bg-white p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="truncate text-sm font-semibold">{{ item.facility.name_en }}</h3>
+            <p class="mt-0.5 text-xs text-ink-muted">{{ item.facility.code }} · {{ item.facility.district }}</p>
+          </div>
+          <span class="{{ status_class }} badge-dot">{{ t("data.feed_" + item.status|lower) }}</span>
+        </div>
+        <dl class="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-xs">
+          <div><dt class="text-ink-muted">{{ t("data.mode") }}</dt><dd class="mt-1 font-semibold text-ink">{{ item.mode }}</dd></div>
+          <div><dt class="text-ink-muted">{{ t("data.ingested") }}</dt><dd class="num mt-1 font-semibold text-ink">{{ item.rows_ingested|num }}</dd></div>
+          <div><dt class="text-ink-muted">{{ t("data.quarantined") }}</dt><dd class="num mt-1 font-semibold {{ 'text-warn-700' if item.rows_quarantined else 'text-ink' }}">{{ item.rows_quarantined|num }}</dd></div>
+        </dl>
+        <p class="mt-3 text-2xs text-ink-muted">{{ t("data.last_sync") }}: {{ item.last_sync_at|datetime if item.last_sync_at else t("data.never_synced") }}</p>
+      </article>
+      {% else %}
+      <div class="md:col-span-2 xl:col-span-3">{{ empty(t("data.no_facilities"), t("data.no_facilities_body")) }}</div>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="disclosure-card">
+    <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("data.ingestion_history") }}</strong><span class="disclosure-hint">{{ t("data.ingestion_history_hint") }}</span></span><span class="badge-neutral num">{{ batches|length }}</span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+    {% if batches %}
+    <div class="table-wrap rounded-none border-x-0 border-b-0 shadow-none">
+      <table>
+        <thead><tr><th>{{ t("data.source") }}</th><th>{{ t("data.facility") }}</th><th>{{ t("data.dataset") }}</th><th>{{ t("data.rows") }}</th><th>{{ t("data.exceptions") }}</th><th>{{ t("data.status") }}</th><th>{{ t("data.created") }}</th><th></th></tr></thead>
+        <tbody>
+          {% for batch, facility_name in batches %}
+          {% set status_class = 'badge-safe' if batch.status == 'COMMITTED' else ('badge-warn' if batch.status in ['NEEDS_REVIEW','COMMITTED_WITH_QUARANTINE'] else ('badge-info' if batch.status == 'READY' else 'badge-neutral')) %}
+          <tr>
+            <td><span class="font-medium text-ink">{{ batch.filename }}</span><span class="mt-0.5 block text-2xs text-ink-muted">{{ batch.mode }} · {{ batch.checksum_sha256[:10] }}</span></td>
+            <td>{{ facility_name }}</td>
+            <td>{{ t("data.inventory_units") if batch.data_type == 'INVENTORY' else t("data.demand_events") }}</td>
+            <td class="num">{{ batch.total_rows|num }}</td>
+            <td class="num {{ 'text-warn-700 font-semibold' if batch.quarantined_rows + batch.rejected_rows else '' }}">{{ (batch.quarantined_rows + batch.rejected_rows)|num }}</td>
+            <td><span class="{{ status_class }}">{{ t("data.batch_" + batch.status|lower) }}</span></td>
+            <td class="text-xs text-ink-muted">{{ batch.created_at|datetime }}</td>
+            <td class="text-end"><a class="btn-secondary btn-sm" href="/data/imports/{{ batch.id }}">{{ t("data.open") }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="card-pad">{{ empty(t("data.no_imports"), t("data.no_imports_body")) }}</div>
+    {% endif %}
+  </details>
+
+  <details id="reconciliation" class="disclosure-card scroll-mt-20" {% if issues %}open{% endif %}>
+    <summary class="disclosure-summary">
+      <span class="disclosure-copy"><strong class="disclosure-title">{{ t("data.reconciliation_queue") }}</strong><span class="disclosure-hint">{{ t("data.reconciliation_hint") }}</span></span>
+      <span class="{{ 'badge-critical' if issues else 'badge-safe' }}">{{ issues|length }} {{ t("data.open")|lower }}</span>
+      {{ icon("chevron-down", "nav-disclosure-chevron") }}
+    </summary>
+    {% if issues %}
+    <div class="divide-y divide-line">
+      {% for issue, facility_name in issues %}
+      <article class="grid gap-3 px-4 py-4 lg:grid-cols-[1fr_22rem] lg:items-center sm:px-5">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="{{ 'badge-critical' if issue.severity == 'CRITICAL' else 'badge-warn' }}">{{ issue.issue_type|replace('_',' ')|title }}</span>
+            <span class="text-xs text-ink-muted">{{ facility_name }} · {{ issue.created_at|datetime }}</span>
+          </div>
+          <p class="mt-2 text-sm font-medium text-ink">{{ t("data.error_" + issue.issue_type|lower) }}</p>
+          <p class="mt-1 text-xs text-ink-muted">{{ t("data.source_reference") }}: {{ issue.details_json.source_system_ref or '—' }} · {{ t("data.row") }} {{ issue.details_json.row_number or '—' }}</p>
+        </div>
+        <form class="flex gap-2" method="post" action="/data/issues/{{ issue.id }}/resolve">
+          <label class="sr-only" for="note-{{ issue.id }}">{{ t("data.resolution_note") }}</label>
+          <input class="field min-w-0" id="note-{{ issue.id }}" name="note" minlength="3" placeholder="{{ t('data.resolution_placeholder') }}" required>
+          <button class="btn-secondary shrink-0" type="submit">{{ t("data.resolve") }}</button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="card-pad">{{ empty(t("data.reconciled"), t("data.reconciled_body"), "check") }}</div>
+    {% endif %}
+  </details>
+
+  <details id="api" class="disclosure-card scroll-mt-20" {% if issued_key %}open{% endif %}>
+    <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("data.api_clients") }}</strong><span class="disclosure-hint">{{ t("data.api_clients_hint") }}</span></span><span class="badge-neutral num">{{ api_clients|length }}</span>{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+    <section class="grid gap-5 border-t border-line p-4 xl:grid-cols-[1fr_.9fr] sm:p-5">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">{{ t("data.api_clients") }}</h2>
+          <p class="card-hint">{{ t("data.api_clients_hint") }}</p>
+        </div>
+        <a class="btn-secondary btn-sm" href="/api/docs" target="_blank" rel="noopener">OpenAPI</a>
+      </div>
+      {% if issued_key %}
+      <div class="m-4 rounded-xl border border-safe-200 bg-safe-50 p-4">
+        <p class="text-sm font-semibold text-safe-700">{{ t("data.key_created") }}</p>
+        <p class="mt-1 text-xs text-safe-700">{{ t("data.key_once") }}</p>
+        <code class="mt-3 block overflow-x-auto rounded-lg border border-safe-200 bg-white px-3 py-2 text-xs text-ink" dir="ltr">{{ issued_key }}</code>
+      </div>
+      {% endif %}
+      <div class="divide-y divide-line">
+        {% for client in api_clients %}
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+          <div>
+            <div class="flex items-center gap-2"><span class="text-sm font-semibold">{{ client.name }}</span><span class="{{ 'badge-safe' if client.is_active else 'badge-neutral' }}">{{ t('data.active') if client.is_active else t('data.revoked') }}</span></div>
+            <p class="mt-1 font-mono text-2xs text-ink-muted" dir="ltr">{{ client.key_prefix }}•••• · {{ (client.scopes_json or [])|join(', ') }}</p>
+          </div>
+          {% if client.is_active %}
+          <form method="post" action="/data/api-clients/{{ client.id }}/revoke"><button class="btn-danger-soft btn-sm" type="submit">{{ t("data.revoke") }}</button></form>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="p-4 text-sm text-ink-muted">{{ t("data.no_api_clients") }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2 class="card-title">{{ t("data.create_client") }}</h2><p class="card-hint">{{ t("data.least_privilege") }}</p></div></div>
+      <form class="card-pad space-y-4" method="post" action="/data/api-clients">
+        <div><label class="label" for="client-name">{{ t("data.client_name") }}</label><input class="field" id="client-name" name="name" minlength="3" placeholder="{{ t('data.client_placeholder') }}" required></div>
+        <fieldset><legend class="label">{{ t("data.scopes") }}</legend><div class="grid gap-2 sm:grid-cols-2">
+          {% for value, label in [('facilities:read',t('data.scope_facilities')),('inventory:read',t('data.scope_inventory')),('demand:read',t('data.scope_demand')),('imports:write',t('data.scope_imports'))] %}
+          <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs"><input type="checkbox" name="scopes" value="{{ value }}"><span>{{ label }}</span></label>
+          {% endfor %}
+        </div></fieldset>
+        <fieldset><legend class="label">{{ t("data.facility_scope") }}</legend><p class="mb-2 text-xs text-ink-muted">{{ t("data.facility_scope_hint") }}</p><div class="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+          {% for facility in upload_facilities %}<label class="flex items-center gap-2 px-1 py-1 text-xs"><input type="checkbox" name="facility_ids" value="{{ facility.id }}"><span>{{ facility.name_en }}</span></label>{% endfor %}
+        </div></fieldset>
+        <button class="btn-primary w-full" type="submit">{{ t("data.issue_key") }}</button>
+      </form>
+    </div>
+    </section>
+  </details>
+</div>
+{% endblock %}

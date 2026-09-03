@@ -1,0 +1,57 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import facility_type_label, kpi with context %}
+
+{% block content %}
+<section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("governance.facilities_total"), summary.total|num, tone="brand", foot=t("governance.selected_scope")) }}
+  {{ kpi(t("governance.healthy_feeds"), summary.healthy|num, tone="safe" if summary.healthy == summary.total else "warn", foot=t("governance.canonical_health")) }}
+  {{ kpi(t("governance.critical_facilities"), summary.critical|num, tone="critical" if summary.critical else "safe", foot=t("governance.stock_risk")) }}
+  {{ kpi(t("governance.available_units"), summary.units|num, tone="info", foot=t("governance.screened_stock")) }}
+</section>
+
+<section class="card mt-4 overflow-hidden">
+  <div class="card-head"><div><h2 class="card-title">{{ t("governance.network_map") }}</h2><p class="card-hint">{{ t("governance.network_map_help") }}</p></div><span class="badge-neutral num">{{ map_points|length }}</span></div>
+  <div class="relative mx-4 mb-5 h-72 overflow-hidden rounded-xl border border-info-200 bg-gradient-to-br from-info-50 via-surface to-brand-50 sm:mx-5">
+    <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(circle at 1px 1px, rgb(148 163 184 / .45) 1px, transparent 0);background-size:18px 18px"></div>
+    {% for point in map_points %}
+      <a href="/insights/facilities/{{ point.facility.id }}" class="group absolute -translate-x-1/2 -translate-y-1/2" style="left:{{ point.x }}%;top:{{ point.y }}%" title="{{ point.facility.name_en }}">
+        <span class="block h-3.5 w-3.5 rounded-full border-2 border-white {{ 'bg-warn-500' if point.feed.status != 'HEALTHY' else 'bg-critical-500' if point.kpi and point.kpi.critical_series else 'bg-safe-500' }} shadow-card transition-transform group-hover:scale-150"></span>
+        <span class="pointer-events-none absolute start-1/2 top-4 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-surface px-2 py-1 text-2xs font-semibold shadow-pop group-hover:block">{{ point.facility.code }}</span>
+      </a>
+    {% endfor %}
+    <div class="absolute bottom-3 start-3 flex flex-wrap gap-2 rounded-lg border border-line bg-surface/90 p-2 text-2xs backdrop-blur"><span class="badge-safe badge-dot">{{ t("governance.feed_healthy") }}</span><span class="badge-warn badge-dot">{{ t("governance.feed_degraded") }}</span><span class="badge-critical badge-dot">{{ t("governance.stock_critical") }}</span></div>
+  </div>
+</section>
+
+<section class="card mt-4">
+  <form method="get" class="grid gap-3 border-b border-line p-4 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_14rem_14rem_auto]">
+    <div><label class="label" for="facility-q">{{ t("common.search") }}</label><input id="facility-q" class="field" name="q" value="{{ filters.q }}" placeholder="{{ t('governance.search_facilities') }}"></div>
+    <div><label class="label" for="facility-status">{{ t("common.status") }}</label><select id="facility-status" class="field" name="status"><option value="">{{ t("common.all") }}</option><option value="degraded" {% if filters.status == 'degraded' %}selected{% endif %}>{{ t("governance.degraded_feeds") }}</option><option value="critical" {% if filters.status == 'critical' %}selected{% endif %}>{{ t("governance.stock_critical") }}</option></select></div>
+    <div><label class="label" for="facility-type">{{ t("governance.facility_type") }}</label><select id="facility-type" class="field" name="type"><option value="">{{ t("common.all") }}</option>{% for value in facility_types %}<option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ facility_type_label(value) }}</option>{% endfor %}</select></div>
+    <div class="flex items-end"><button class="btn-primary w-full" type="submit">{{ t("common.apply_filters") }}</button></div>
+  </form>
+
+  {% if rows %}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>{{ t("governance.facility") }}</th><th>{{ t("governance.feed") }}</th><th class="text-end">{{ t("governance.units") }}</th><th class="text-end">{{ t("governance.cover") }}</th><th class="text-end">{{ t("governance.fill_rate") }}</th><th class="text-end">{{ t("governance.wastage") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td><p class="font-semibold text-ink">{{ row.facility.name_en }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ row.facility.code }} · {{ row.facility.district }} · {{ facility_type_label(row.facility.facility_type) }}</p></td>
+          <td><span class="badge-{{ 'safe' if row.feed.status == 'HEALTHY' else 'warn' }} badge-dot">{{ row.feed.status|replace('_',' ')|title }}</span><p class="num mt-1 text-2xs text-ink-muted">{{ row.feed.age_hours|age_hours }}</p></td>
+          <td class="num text-end font-semibold">{{ row.kpi.units_available|num if row.kpi else '—' }}</td>
+          <td class="num text-end"><span class="{{ 'text-critical-600 font-bold' if row.kpi and row.kpi.min_days_of_cover is not none and row.kpi.min_days_of_cover < 2 else '' }}">{{ row.kpi.min_days_of_cover|num(1) if row.kpi else '—' }}</span></td>
+          <td class="num text-end">{{ row.kpi.fill_rate_30d|pct(1) if row.kpi else '—' }}</td>
+          <td class="num text-end">{{ row.kpi.wastage_pct_30d|pct(1) if row.kpi else '—' }}</td>
+          <td class="text-end"><a class="btn-secondary btn-sm" href="/insights/facilities/{{ row.facility.id }}">{{ t("common.open") }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty"><p class="empty-title">{{ t("governance.no_facilities") }}</p><p class="empty-body">{{ t("governance.no_facilities_help") }}</p></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, empty with context %}
+
+{% macro eligibility_chip(state) %}
+  {% set tones = {
+    "success": "badge-safe",
+    "warning": "badge-warn",
+    "critical": "badge-critical",
+    "neutral": "badge-neutral",
+  } %}
+  {% set code = state.code|lower %}
+  {% if state.code == "DEFERRED" %}{% set detail = t("ops.state_deferred_detail", date=state.until|date) %}
+  {% elif state.code == "INTERVAL" %}{% set detail = t("ops.state_interval_detail", date=state.until|date) %}
+  {% elif state.code == "AGE" %}{% set detail = t("ops.state_age_detail", age=state.age, minimum=state.minimum_age, maximum=state.maximum_age) %}
+  {% else %}{% set detail = t("ops.state_" ~ code ~ "_detail") %}{% endif %}
+  <span class="{{ tones.get(state.tone, 'badge-neutral') }}" title="{{ detail }}">
+    {{ t("ops.state_" ~ code, days=state.days or "") }}
+  </span>
+{% endmacro %}
+
+{% block toolbar %}
+<span class="hidden text-2xs text-ink-muted sm:block">
+  <span class="num font-semibold text-ink">{{ total|num }}</span> {{ t("ops.matching") }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ops.donors_on_register"), summary.total|num, foot=t("ops.registered_here")) }}
+  {{ kpi(t("ops.contactable"), summary.contactable|num,
+         foot=t("ops.contactable_body"), tone="safe") }}
+  {{ kpi(t("ops.temporarily_deferred"), summary.deferred|num,
+         foot=t("ops.temporarily_deferred_body"), tone="warn") }}
+  {{ kpi(t("ops.permanently_deferred"), summary.permanent|num,
+         foot=t("ops.permanently_deferred_body"), tone="critical") }}
+</div>
+
+<section class="card card-pad mb-4 flex flex-col gap-3 border-l-4 border-l-info-500 sm:flex-row sm:items-center sm:justify-between" aria-labelledby="register-donor-title">
+  <div>
+    <h2 id="register-donor-title" class="text-sm font-semibold text-ink">{{ t("ops.register_donor_from_session_title") }}</h2>
+    <p class="mt-1 max-w-3xl text-xs leading-relaxed text-ink-muted">{{ t("ops.register_donor_from_session_body") }}</p>
+  </div>
+  {% if open_session %}
+    <a class="btn-primary shrink-0" href="/app/sessions/{{ open_session.id }}/screen">{{ t("ops.register_and_screen") }}</a>
+  {% else %}
+    <a class="btn-secondary shrink-0" href="/app/sessions">{{ t("ops.open_collection_workspace") }}</a>
+  {% endif %}
+</section>
+
+<form method="get" action="/app/donors"
+      class="card card-pad mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+  <div class="lg:col-span-2">
+    <label class="label" for="f-q">{{ t("common.search") }}</label>
+    <input class="field" id="f-q" name="q" value="{{ filters.q }}"
+           placeholder="{{ t('ops.find_donor_placeholder') }}"
+           autocomplete="off">
+  </div>
+
+  <div>
+    <label class="label" for="f-group">{{ t("common.blood_group") }}</label>
+    <select class="field" id="f-group" name="group">
+      <option value="">{{ t("common.all") }}</option>
+      {% for code in groups %}
+        <option value="{{ code }}" {% if filters.group == code %}selected{% endif %}>{{ code }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="label" for="f-availability">{{ t("ops.availability") }}</label>
+    <select class="field" id="f-availability" name="availability">
+      <option value="">{{ t("ops.anyone") }}</option>
+      {% for key, label in availability_filters.items() %}
+        <option value="{{ key }}" {% if filters.availability == key %}selected{% endif %}>{{ t("ops.availability_" ~ key) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="flex items-end gap-2">
+    <button type="submit" class="btn-primary flex-1">{{ t("common.search") }}</button>
+    <a href="/app/donors" class="btn-secondary">{{ t("ops.reset") }}</a>
+  </div>
+</form>
+
+{% if rows %}
+  <div class="table-wrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>{{ t("ops.donor") }}</th>
+          <th>{{ t("ops.code") }}</th>
+          <th>{{ t("ops.group") }}</th>
+          <th>{{ t("ops.type") }}</th>
+          <th class="text-end">{{ t("ops.donations") }}</th>
+          <th>{{ t("ops.last_donated") }}</th>
+          <th>{{ t("ops.eligibility") }}</th>
+          <th>{{ t("ops.contact") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr class="cursor-pointer"
+              onclick="window.location='/app/donors/{{ row.donor.id }}'">
+            <td class="font-medium">
+              <a class="link" href="/app/donors/{{ row.donor.id }}">
+                {{ row.donor.full_name or t("ops.unnamed_donor") }}
+              </a>
+              <span class="block text-2xs text-ink-muted">
+                {{ t("ops." ~ row.donor.gender|lower) if row.donor.gender else "" }}
+                {%- if row.donor.district %} · {{ row.donor.district }}{% endif %}
+              </span>
+            </td>
+            <td class="whitespace-nowrap font-mono text-xs">{{ row.donor.donor_code }}</td>
+            <td>{{ group_chip(row.group) if row.group else "—" }}</td>
+            <td class="text-xs text-ink-secondary">
+              {{ t("ops.donor_type_" ~ row.donor.donor_type|lower) if row.donor.donor_type else "—" }}
+            </td>
+            <td class="num text-end">{{ row.donor.total_donations|num }}</td>
+            <td class="num whitespace-nowrap text-xs text-ink-secondary">
+              {{ row.donor.last_donation_at|date if row.donor.last_donation_at else t("ops.never") }}
+            </td>
+            <td>{{ eligibility_chip(row.state) }}</td>
+            <td class="whitespace-nowrap text-xs">
+              {% if row.donor.consent_contact %}
+                <span class="num text-ink-secondary">{{ row.donor.phone or "—" }}</span>
+              {% else %}
+                <span class="text-ink-muted" title="{{ t('ops.no_consent_hint') }}">
+                  {{ t("ops.no_consent") }}
+                </span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+    {% set base = "/app/donors?q=" ~ (filters.q|urlencode) ~ "&group=" ~ filters.group
+                  ~ "&donor_type=" ~ filters.donor_type
+                  ~ "&availability=" ~ filters.availability %}
+    <nav class="mt-3 flex items-center justify-between text-xs" aria-label="{{ t('common.pagination') }}">
+      <span class="text-ink-muted">
+        {{ t("ops.page_of_donors", page=page, pages=pages|num, total=total|num) }}
+      </span>
+      <span class="flex gap-2">
+        {% if page > 1 %}
+          <a class="btn-secondary" href="{{ base }}&page={{ page - 1 }}">{{ t("common.previous") }}</a>
+        {% endif %}
+        {% if page < pages %}
+          <a class="btn-secondary" href="{{ base }}&page={{ page + 1 }}">{{ t("common.next") }}</a>
+        {% endif %}
+      </span>
+    </nav>
+  {% endif %}
+
+  <p class="mt-3 text-2xs text-ink-muted">{{ t("ops.eligibility_freshness_note") }}</p>
+{% else %}
+  {{ empty(t("ops.no_donor_results"), t("ops.no_donor_results_body")) }}
+{% endif %}
+
+{% endblock %}

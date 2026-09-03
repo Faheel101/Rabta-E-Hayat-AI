@@ -1,0 +1,19 @@
+{
+  "name": "rabta-e-hayat-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Stylesheet build for the Rabta-e-Hayat web application.",
+  "scripts": {
+    "dev": ".venv/bin/uvicorn web.main:app --reload --host 127.0.0.1 --port 8001",
+    "start": ".venv/bin/uvicorn web.main:app --host 127.0.0.1 --port 8001",
+    "css": "node ./node_modules/tailwindcss/lib/cli.js -i ./assets/css/app.css -o ./web/static/css/app.css --minify",
+    "css:watch": "node ./node_modules/tailwindcss/lib/cli.js -i ./assets/css/app.css -o ./web/static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "alpinejs": "^3.14.9",
+    "htmx.org": "^1.9.12",
+    "tailwindcss": "^3.4.17"
+  }
+}

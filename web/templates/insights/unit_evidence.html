@@ -1,0 +1,50 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge with context %}
+
+{% block toolbar %}
+  {% if can_open_operational %}
+    <a class="btn-secondary btn-sm" href="/app/inventory/unit/{{ unit.id }}">{{ t("evidence.open_operational") }}</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="card overflow-hidden">
+  <div class="border-b border-line bg-gradient-to-r from-info-50 to-surface px-5 py-5 sm:px-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-2xs font-bold uppercase tracking-[0.16em] text-info-700">{{ t("evidence.eyebrow") }}</p>
+        <h2 class="font-mono mt-2 text-xl font-bold text-ink">{{ unit.din }}</h2>
+        <p class="mt-1 max-w-2xl text-xs leading-relaxed text-ink-muted">{{ t("evidence.redacted_help") }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        {{ status_badge(unit.status) }}
+        {{ group_chip(group.code if group else "—") }}
+      </div>
+    </div>
+  </div>
+
+  <dl class="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-4">
+    <div class="bg-surface p-5"><dt class="label">{{ t("evidence.component") }}</dt><dd class="mt-1 text-sm font-bold text-ink">{{ component.code if component else "—" }}</dd></div>
+    <div class="bg-surface p-5"><dt class="label">{{ t("evidence.facility") }}</dt><dd class="mt-1 text-sm font-bold text-ink">{{ facility.name_en if facility else "—" }}</dd></div>
+    <div class="bg-surface p-5"><dt class="label">{{ t("evidence.expires") }}</dt><dd class="num mt-1 text-sm font-bold text-ink">{{ unit.expires_at|datetime }}</dd></div>
+    <div class="bg-surface p-5"><dt class="label">{{ t("evidence.screening") }}</dt><dd class="mt-1 text-sm font-bold {{ 'text-safe-600' if unit.screening_status == 'PASSED' else 'text-warn-700' }}">{{ unit.screening_status|replace('_', ' ')|title }}</dd></div>
+  </dl>
+</section>
+
+<div class="mt-4 grid gap-4 lg:grid-cols-2">
+  <section class="card card-pad">
+    <h2 class="card-title">{{ t("evidence.safety_title") }}</h2>
+    <dl class="mt-4 space-y-3 text-sm">
+      <div class="flex justify-between gap-4"><dt class="text-ink-muted">{{ t("evidence.cold_chain") }}</dt><dd class="font-semibold {{ 'text-safe-600' if not unit.cold_chain_breach_count else 'text-critical-600' }}">{{ t("evidence.clear") if not unit.cold_chain_breach_count else t("evidence.breaches", count=unit.cold_chain_breach_count) }}</dd></div>
+      <div class="flex justify-between gap-4"><dt class="text-ink-muted">{{ t("evidence.storage") }}</dt><dd class="font-semibold text-ink">{{ storage.name if storage else t("evidence.not_recorded") }}</dd></div>
+      <div class="flex justify-between gap-4"><dt class="text-ink-muted">{{ t("evidence.collected") }}</dt><dd class="num font-semibold text-ink">{{ unit.collected_at|datetime }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="card card-pad">
+    <h2 class="card-title">{{ t("evidence.boundary_title") }}</h2>
+    <p class="mt-3 text-sm leading-relaxed text-ink-secondary">{{ t("evidence.boundary_body") }}</p>
+    <div class="mt-4 rounded-lg border border-info-200 bg-info-50 p-3 text-xs leading-relaxed text-info-800">{{ t("evidence.decision_help") }}</div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge, days_left_cell, empty with context %}
+{% from "layout/icons.html" import icon %}
+{% from "ai/_components.html" import result_content with context %}
+
+{% block content %}
+{% if form_error %}
+<div class="note-critical mb-4">
+  <strong>{{ t("tr.action_blocked") }}</strong>
+  <span class="ms-1">{{ form_error.message }}</span>
+  <span class="ms-1 font-mono text-2xs opacity-75">{{ form_error.code }}</span>
+</div>
+{% endif %}
+
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <div class="flex flex-wrap items-center gap-2">
+      <h1 class="text-xl">{{ source.name_en }} <span class="text-ink-faint">→</span> {{ destination.name_en }}</h1>
+      {{ status_badge(record.status) }}
+    </div>
+    <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+      <span class="font-mono">{{ record.tracking_code or record.id }}</span>
+      <span>{{ record.distance_km|num }} km</span>
+      <span>{{ record.est_travel_minutes|num }} {{ t("common.minutes") }}</span>
+      <span>{{ record.transport_mode|replace('_',' ')|title }}</span>
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    {% if record.tracking_code %}<a class="btn-secondary btn-sm" href="/insights/transfer-plan/track/{{ record.tracking_code }}">{{ t("tr.track") }}</a>{% endif %}
+    {% if capabilities.print %}<a class="btn-secondary btn-sm" href="/insights/transfer-plan/{{ record.id }}/dispatch-slip" target="_blank">{{ t("tr.print_slip") }}</a>{% endif %}
+    <a class="btn-ghost btn-sm" href="/insights/transfer-plan">{{ t("tr.back_to_plan") }}</a>
+  </div>
+</div>
+
+<div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,.8fr)]">
+  <div class="min-w-0 space-y-4">
+    <section class="card">
+      <div class="card-head flex-wrap"><div class="min-w-0"><h2 class="card-title">{{ t("tr.decision_evidence") }}</h2><p class="mt-0.5 text-2xs text-ink-muted">{{ t("tr.decision_evidence_help") }}</p></div><span class="badge-neutral shrink-0">{{ t("tr.recommendation_only") }}</span></div>
+      <div class="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
+        <div><span class="block text-2xs text-ink-muted">{{ t("common.component") }}</span><div class="mt-1 flex items-center gap-2"><strong>{{ component.code }}</strong>{{ group_chip(donor_group.code) }}</div></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.demand_answered") }}</span><div class="mt-1 flex items-center gap-2">{{ group_chip(recipient_group.code if recipient_group else donor_group.code) }}<strong class="num">{{ record.units }} {{ t("common.units") }}</strong></div></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.projected_rescue") }}</span><strong class="mt-1 block num text-base text-safe-600">{{ record.projected_units_saved|num }} {{ t("common.units") }}</strong></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.shortage_averted") }}</span><strong class="mt-1 block num text-base text-info-600">{{ record.projected_shortage_averted|num }} {{ t("common.units") }}</strong></div>
+      </div>
+      <div class="border-t border-line bg-surface-sunken px-4 py-3 sm:px-5">
+        <p class="text-xs font-semibold text-ink">{{ t("tr.why_this_move") }}</p>
+        <p class="mt-1 text-xs leading-relaxed text-ink-secondary">{{ t("tr.derived_rationale", units=record.units, component=component.code, donor=donor_group.code, source=source.name_en, destination=destination.name_en, minutes=record.est_travel_minutes, recipient=(recipient_group.code if recipient_group else donor_group.code), compatibility=t("tr.compatibility_identical") if (not recipient_group or recipient_group.id == donor_group.id) else t("tr.compatibility_substitution", rank=record.preference_rank), expiry=(units[0].expires_at|date("%d %b %Y") if units else "—")) }}</p>
+      </div>
+    </section>
+
+    <section class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 class="card-title">{{ t("ai.transfer_title") }}</h2><p class="card-hint">{{ t("ai.transfer_help") }}</p></div>
+        <form method="post" action="/ai/transfer/{{ record.id }}">
+          <input type="hidden" name="next" value="/insights/transfer-plan/{{ record.id }}">
+          <button class="btn-secondary btn-sm" type="submit">{{ icon("sparkles", "h-4 w-4") }} {{ t("ai.explain_with_qwen") }}</button>
+        </form>
+      </div>
+      {% if ai_result %}<div class="mt-4">{{ result_content(ai_result, true) }}</div>{% else %}<div class="note-info mt-4 text-xs">{{ t("ai.transfer_idle") }}</div>{% endif %}
+    </section>
+
+    <section class="card min-w-0 overflow-hidden" x-data="{ showAll: false }">
+      <div class="card-head"><div><h2 class="card-title">{{ t("tr.physical_manifest") }}</h2><p class="mt-0.5 text-2xs text-ink-muted">{{ t("tr.manifest_help") }}</p></div><span class="badge-info num">{{ units|length }} / {{ record.units }}</span></div>
+      {% if units %}
+      <div class="overflow-x-auto">
+        <table class="data-table">
+          <thead><tr><th>{{ t("common.din") }}</th><th>{{ t("common.component") }}</th><th>{{ t("common.expires") }}</th><th>{{ t("common.time_left") }}</th><th>{{ t("common.status") }}</th><th>{{ t("tr.current_custody") }}</th></tr></thead>
+          <tbody>
+          {% for unit in units %}
+            <tr {% if loop.index > 8 %}x-show="showAll" x-cloak{% endif %}>
+              <td class="font-mono text-xs font-semibold">{{ unit.din }}</td>
+              <td>{{ component.code }} · {{ group_chip(donor_group.code) }}</td>
+              <td class="num">{{ unit.expires_at|datetime }}</td>
+              <td>{{ days_left_cell(unit.expires_at) }}</td>
+              <td>{{ status_badge(unit.status) }}</td>
+              <td class="text-xs text-ink-muted">{% if unit.id in (record.accepted_unit_ids or []) %}{{ destination.name_en }}{% elif unit.id in (record.quarantined_unit_ids or []) %}{{ t("tr.destination_quarantine") }}{% elif unit.id in (record.missing_unit_ids or []) %}{{ t("tr.last_seen_in_transit") }}{% elif unit.status == 'IN_TRANSIT' %}{{ record.courier_name or t("tr.courier_custody") }}{% else %}{{ source.name_en }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if units|length > 8 %}<div class="border-t border-line px-4 py-3 text-center"><button class="btn-ghost btn-sm" type="button" @click="showAll = !showAll"><span x-show="!showAll">{{ t("tr.show_all_manifest", count=units|length) }}</span><span x-show="showAll" x-cloak>{{ t("tr.collapse_manifest") }}</span></button></div>{% endif %}
+      {% else %}{{ empty(t("tr.manifest_unavailable"), t("tr.manifest_unavailable_help")) }}{% endif %}
+    </section>
+
+    {% if record.discrepancy_json %}
+    <section class="{{ 'note-critical' if record.status == 'FAILED_COLD_CHAIN' else 'note-warn' }}">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><strong>{{ t("tr.receipt_outcome") }}</strong><p class="mt-1 text-xs">{{ record.failed_reason|replace('_',' ')|title if record.failed_reason else record.receipt_disposition|title }}</p></div>{{ status_badge(record.status) }}</div>
+      <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {% for label, value in [("tr.manifested",record.discrepancy_json.manifest),("tr.received",record.discrepancy_json.received),("tr.accepted",record.discrepancy_json.accepted),("tr.quarantined",record.discrepancy_json.quarantined),("tr.missing",record.discrepancy_json.missing)] %}
+        <div><span class="block text-2xs opacity-75">{{ t(label) }}</span><strong class="num text-lg">{{ value }}</strong></div>
+        {% endfor %}
+      </div>
+      {% if record.discrepancy_note %}<p class="mt-3 border-t border-current pt-2 text-xs opacity-75">{{ record.discrepancy_note }}</p>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="min-w-0 space-y-4">
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("tr.cold_chain_envelope") }}</h2>
+      <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.required_temperature") }}</span><strong class="num">{{ component.storage_temp_min_c|num(1) }}–{{ component.storage_temp_max_c|num(1) }} °C</strong></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.transport_limit") }}</span><strong class="num">{{ component.max_transport_hours|num(1) }} h</strong></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.departure_reading") }}</span><strong class="num">{{ (record.departure_temp_c|string ~ ' °C') if record.departure_temp_c is not none else '—' }}</strong></div>
+        <div><span class="block text-2xs text-ink-muted">{{ t("tr.receipt_reading") }}</span><strong class="num">{{ (record.receiving_temp_c|string ~ ' °C') if record.receiving_temp_c is not none else '—' }}</strong></div>
+      </div>
+      {% if component.requires_agitation %}<div class="note-warn mt-3">{{ t("tr.agitation_required") }}</div>{% endif %}
+    </section>
+
+    {% if capabilities.approve or capabilities.reject or capabilities.modify %}
+    <section class="card card-pad" x-data="{panel: '{{ error_action or 'approve' }}'}">
+      <h2 class="card-title">{{ t("tr.approval_gate") }}</h2>
+      <p class="mt-1 text-2xs text-ink-muted">{{ t("tr.approval_gate_help") }}</p>
+      <div class="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-surface-sunken p-1">
+        <button type="button" class="rounded-md px-2 py-1.5 text-xs font-semibold" :class="panel==='approve' ? 'bg-surface shadow-card text-ink' : 'text-ink-muted'" @click="panel='approve'">{{ t("common.approve") }}</button>
+        <button type="button" class="rounded-md px-2 py-1.5 text-xs font-semibold" :class="panel==='modify' ? 'bg-surface shadow-card text-ink' : 'text-ink-muted'" @click="panel='modify'">{{ t("common.modify") }}</button>
+        <button type="button" class="rounded-md px-2 py-1.5 text-xs font-semibold" :class="panel==='reject' ? 'bg-surface shadow-card text-critical-700' : 'text-ink-muted'" @click="panel='reject'">{{ t("common.reject") }}</button>
+      </div>
+      <form x-show="panel==='approve'" method="post" action="/insights/transfer-plan/{{ record.id }}/approve" class="mt-3">
+        <div class="note-info text-xs">{{ t("tr.approve_confirmation", units=record.units) }}</div>
+        <button class="btn-primary mt-3 w-full" type="submit">{{ t("tr.approve_and_reserve") }}</button>
+      </form>
+      <form x-show="panel==='modify'" x-cloak method="post" action="/insights/transfer-plan/{{ record.id }}/modify" class="mt-3 space-y-3">
+        <div><label class="label" for="units">{{ t("tr.modify_units") }}</label><input class="field" id="units" name="units" type="number" min="1" max="{{ record.units - 1 }}" value="{{ record.units - 1 }}" required><p class="field-help">{{ t("tr.modify_help") }}</p></div>
+        <button class="btn-secondary w-full" type="submit">{{ t("tr.save_reduced_manifest") }}</button>
+      </form>
+      <form x-show="panel==='reject'" x-cloak method="post" action="/insights/transfer-plan/{{ record.id }}/reject" class="mt-3 space-y-3">
+        <div><label class="label" for="reason">{{ t("tr.reject_reason") }}</label><select class="field" id="reason" name="reason" required><option value="">{{ t("common.select") }}</option>{% for reason in rejection_reasons %}<option value="{{ reason }}">{{ t("tr.reason_" ~ reason) }}</option>{% endfor %}</select><p class="field-help">{{ t("tr.reject_reason_required") }}</p></div>
+        <div><label class="label" for="note">{{ t("tr.reject_note") }}</label><textarea class="field" id="note" name="note" rows="2"></textarea></div>
+        <button class="btn-danger w-full" type="submit">{{ t("tr.reject_recommendation") }}</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if capabilities.dispatch %}
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("tr.dispatch_custody") }}</h2><p class="mt-1 text-2xs text-ink-muted">{{ t("tr.dispatch_help") }}</p>
+      <form method="post" action="/insights/transfer-plan/{{ record.id }}/dispatch" class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <div><label class="label" for="custodian">{{ t("tr.releasing_custodian") }}</label><input class="field" id="custodian" name="custodian" required></div>
+        <div><label class="label" for="courier_name">{{ t("tr.courier_name") }}</label><input class="field" id="courier_name" name="courier_name" required></div>
+        <div><label class="label" for="courier_phone">{{ t("common.phone") }}</label><input class="field" id="courier_phone" name="courier_phone" inputmode="tel"></div>
+        <div><label class="label" for="vehicle_ref">{{ t("tr.vehicle_ref") }}</label><input class="field" id="vehicle_ref" name="vehicle_ref"></div>
+        <div><label class="label" for="container_id">{{ t("tr.container_id") }}</label><input class="field font-mono" id="container_id" name="container_id" required></div>
+        <div><label class="label" for="seal_number">{{ t("tr.seal_number") }}</label><input class="field font-mono" id="seal_number" name="seal_number" required></div>
+        <div><label class="label" for="departure_temp_c">{{ t("tr.departure_temp") }}</label><input class="field num" id="departure_temp_c" name="departure_temp_c" type="number" step="0.1" min="{{ component.storage_temp_min_c }}" max="{{ component.storage_temp_max_c }}" value="{{ ((component.storage_temp_min_c + component.storage_temp_max_c) / 2)|round(1) }}" required></div>
+        <button class="btn-primary w-full" type="submit">{{ t("tr.seal_and_dispatch") }}</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if capabilities.depart %}
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("tr.confirm_departure") }}</h2><p class="mt-1 text-xs text-ink-muted">{{ t("tr.departure_help", courier=record.courier_name, seal=record.seal_number) }}</p>
+      <form method="post" action="/insights/transfer-plan/{{ record.id }}/depart"><button class="btn-primary mt-3 w-full" type="submit">{{ t("tr.release_to_transit") }}</button></form>
+    </section>
+    {% endif %}
+
+    {% if capabilities.receive %}
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("tr.receipt_reconciliation") }}</h2><p class="mt-1 text-2xs text-ink-muted">{{ t("tr.receipt_help") }}</p>
+      <form method="post" action="/insights/transfer-plan/{{ record.id }}/receive" class="mt-3 space-y-3">
+        <div class="max-h-64 overflow-y-auto rounded-lg border border-line">
+          <div class="sticky top-0 grid grid-cols-[1fr_4rem_4rem] gap-2 border-b border-line bg-surface-sunken px-3 py-2 text-2xs font-semibold"><span>{{ t("common.din") }}</span><span>{{ t("tr.arrived") }}</span><span>{{ t("tr.accept") }}</span></div>
+          {% for unit in units %}<div class="grid grid-cols-[1fr_4rem_4rem] items-center gap-2 border-b border-line px-3 py-2 last:border-transparent"><span class="font-mono text-2xs">{{ unit.din }}</span><input type="checkbox" name="received_unit_ids" value="{{ unit.id }}" checked><input type="checkbox" name="accepted_unit_ids" value="{{ unit.id }}" checked></div>{% endfor %}
+        </div>
+        <div class="grid grid-cols-2 gap-3"><div><label class="label" for="receiving_temp_c">{{ t("tr.receiving_temp") }}</label><input class="field num" id="receiving_temp_c" name="receiving_temp_c" type="number" step="0.1" value="{{ ((component.storage_temp_min_c + component.storage_temp_max_c) / 2)|round(1) }}" required></div><div><label class="label" for="seal_status">{{ t("tr.seal_status") }}</label><select class="field" id="seal_status" name="seal_status" required><option value="INTACT">{{ t("tr.seal_intact") }}</option><option value="BROKEN">{{ t("tr.seal_broken") }}</option><option value="MISSING">{{ t("tr.seal_missing") }}</option></select></div></div>
+        <div><label class="label" for="storage_location_id">{{ t("tr.accepted_store") }}</label><select class="field" id="storage_location_id" name="storage_location_id"><option value="">{{ t("common.select") }}</option>{% for store in stores %}<option value="{{ store.id }}">{{ store.name }} · {{ store.target_temp_min_c|num(1) }}–{{ store.target_temp_max_c|num(1) }} °C</option>{% endfor %}</select></div>
+        <div><label class="label" for="discrepancy_note">{{ t("tr.discrepancy_note") }}</label><textarea class="field" id="discrepancy_note" name="discrepancy_note" rows="2" placeholder="{{ t('tr.discrepancy_placeholder') }}"></textarea></div>
+        <div class="note-warn text-xs">{{ t("tr.exception_quarantine_notice") }}</div>
+        <button class="btn-primary w-full" type="submit">{{ t("tr.reconcile_and_receive") }}</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if capabilities.cancel %}
+    <details class="card card-pad">
+      <summary class="cursor-pointer text-xs font-semibold text-critical-700">{{ t("tr.cancel_movement") }}</summary>
+      <form method="post" action="/insights/transfer-plan/{{ record.id }}/cancel" class="mt-3 space-y-3"><div><label class="label" for="cancel-reason">{{ t("tr.cancellation_reason") }}</label><textarea class="field" id="cancel-reason" name="reason" rows="2" required></textarea></div><button class="btn-danger w-full" type="submit">{{ t("tr.cancel_and_release") }}</button></form>
+    </details>
+    {% endif %}
+
+    <section class="card card-pad">
+      <div class="flex items-center justify-between gap-3"><h2 class="card-title">{{ t("tr.audit_timeline") }}</h2><span class="badge-neutral num">{{ timeline|length }}</span></div>
+      <ol class="mt-4 space-y-0">
+        <li class="relative border-s border-line pb-4 ps-5"><i class="absolute -start-1.5 top-0 h-3 w-3 rounded-full bg-info-500 ring-2 ring-surface"></i><p class="text-xs font-semibold">{{ t("tr.recommended") }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ (record.recommended_at or record.created_at)|datetime }} · {{ t("tr.optimizer") }}</p></li>
+        {% for event in timeline %}<li class="relative border-s border-line pb-4 ps-5 last:pb-0"><i class="absolute -start-1.5 top-0 h-3 w-3 rounded-full {{ 'bg-critical-500' if 'fail' in event.action or 'cancel' in event.action or 'reject' in event.action else 'bg-safe-500' }} ring-2 ring-surface"></i><p class="text-xs font-semibold">{{ t("tr.audit_" ~ event.action|replace('.','_'), default=event.action|replace('.',' ')|title) }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ event.created_at|datetime }} · {{ event.actor }}</p></li>{% endfor %}
+      </ol>
+    </section>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,594 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Rabta-e-Hayat application stylesheet.
+ *
+ * Component classes live here rather than as long utility strings in templates,
+ * so a badge or a table looks identical on every screen. Spec §12.1 principle 5
+ * depends on that: colour is only a reliable signal if it is applied the same
+ * way everywhere.
+ */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface-page text-ink font-sans text-base antialiased;
+  }
+
+  h1 {
+    @apply text-xl font-semibold tracking-[-0.015em] text-ink;
+  }
+
+  h2 {
+    @apply text-lg font-semibold tracking-[-0.01em] text-ink;
+  }
+
+  h3 {
+    @apply text-base font-semibold text-ink;
+  }
+
+  /* Numbers must be tabular everywhere. A column of unit counts that shifts
+   * width as digits change is unreadable at a glance. */
+  .num,
+  td.num,
+  input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+
+  ::-webkit-scrollbar {
+    @apply h-2 w-2;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply fixed start-4 top-3 z-[100] -translate-y-24 rounded-lg bg-ink px-4 py-2
+           text-sm font-semibold text-white shadow-pop transition-transform focus:translate-y-0;
+  }
+
+  /* ------------------------------------------------------------ surfaces -- */
+
+  .card {
+    @apply rounded-xl border border-line bg-surface shadow-card;
+  }
+
+  .card-pad {
+    @apply p-4 sm:p-5;
+  }
+
+  .card-head {
+    @apply flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5;
+  }
+
+  .card-title {
+    @apply text-sm font-semibold text-ink;
+  }
+
+  .card-hint {
+    @apply text-xs text-ink-muted;
+  }
+
+  .choice-card {
+    @apply flex min-h-16 cursor-pointer items-start gap-3 rounded-xl border border-line
+           bg-surface px-3 py-3 transition-colors hover:border-brand-300 hover:bg-brand-50;
+  }
+
+  .choice-card:has(input:checked) {
+    @apply border-brand-500 bg-brand-50 ring-1 ring-brand-500;
+  }
+
+  .choice-card input {
+    @apply mt-0.5 shrink-0;
+  }
+
+  .choice-card strong {
+    @apply block text-xs font-semibold text-ink;
+  }
+
+  .choice-card small {
+    @apply mt-1 block text-2xs leading-relaxed text-ink-muted;
+  }
+
+  /* -------------------------------------------------------------- buttons -- */
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-lg border
+           min-h-10 px-3 py-1.5 text-sm font-semibold transition-colors duration-150 ease-smooth
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn border-brand-500 bg-brand-500 text-white hover:border-brand-600 hover:bg-brand-600;
+  }
+
+  .btn-secondary {
+    @apply btn border-line-strong bg-surface text-ink hover:bg-surface-sunken;
+  }
+
+  .btn-ghost {
+    @apply btn border-transparent bg-transparent text-ink-secondary hover:bg-surface-sunken hover:text-ink;
+  }
+
+  .btn-danger {
+    @apply btn border-critical-500 bg-critical-500 text-white hover:bg-critical-600;
+  }
+
+  .btn-danger-soft {
+    @apply btn border-critical-200 bg-critical-50 text-critical-700 hover:bg-critical-100;
+  }
+
+  .btn-sm {
+    @apply min-h-9 px-2.5 py-1 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-4 py-2.5 text-base;
+  }
+
+  /* Transaction forms launched from dense tables. A fixed panel avoids being
+     clipped by the table's horizontal overflow container at narrow widths. */
+  .action-modal[open]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    background: rgb(15 23 42 / 0.34);
+    backdrop-filter: blur(2px);
+  }
+
+  .action-modal-panel {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    z-index: 50;
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: min(44rem, calc(100vh - 2rem));
+    transform: translate(-50%, -50%);
+    overflow-y: auto;
+    @apply space-y-3 rounded-xl border border-line bg-surface p-4 shadow-xl;
+  }
+
+  /* --------------------------------------------------------------- badges -- */
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border
+           px-2 py-0.5 text-2xs font-semibold leading-5;
+  }
+
+  .badge-dot::before {
+    content: "";
+    @apply h-1.5 w-1.5 shrink-0 rounded-full bg-current;
+  }
+
+  .badge-critical {
+    @apply badge border-critical-200 bg-critical-50 text-critical-700;
+  }
+
+  .badge-warn {
+    @apply badge border-warn-200 bg-warn-50 text-warn-700;
+  }
+
+  .badge-safe {
+    @apply badge border-safe-200 bg-safe-50 text-safe-700;
+  }
+
+  .badge-info {
+    @apply badge border-info-200 bg-info-50 text-info-700;
+  }
+
+  .badge-neutral {
+    @apply badge border-line-strong bg-surface-sunken text-ink-secondary;
+  }
+
+  .badge-brand {
+    @apply badge border-brand-200 bg-brand-50 text-brand-700;
+  }
+
+  /* Blood group chip — fixed hue per group across the whole app */
+  .chip-group {
+    @apply inline-grid min-w-[2.5rem] place-items-center rounded px-1.5 py-0.5
+           text-2xs font-bold text-white;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------------------------------------------------------------- forms -- */
+
+  .label {
+    @apply mb-1 block text-xs font-semibold text-ink-secondary;
+  }
+
+  .hint {
+    @apply mt-1 text-xs text-ink-muted;
+  }
+
+  .field {
+    @apply block min-h-10 w-full rounded-lg border-line-strong bg-white text-sm text-ink
+           shadow-none transition-colors duration-150
+           placeholder:text-ink-faint
+           focus:border-brand-400 focus:ring-2 focus:ring-brand-500/25;
+  }
+
+  .field-error {
+    @apply border-critical-500 focus:border-critical-500 focus:ring-critical-500/25;
+  }
+
+  .error-text {
+    @apply mt-1 flex items-start gap-1 text-xs font-medium text-critical-700;
+  }
+
+  .fieldset {
+    @apply rounded-xl border border-line bg-surface p-4 sm:p-5;
+  }
+
+  .fieldset-legend {
+    @apply -mt-1 mb-3 text-sm font-semibold text-ink;
+  }
+
+  /* --------------------------------------------------------------- tables -- */
+
+  .table-wrap {
+    @apply max-w-full overflow-x-auto rounded-xl border border-line bg-surface shadow-card;
+    scrollbar-gutter: stable;
+  }
+
+  .table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+
+  .table thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface-sunken
+           px-3 py-2 text-2xs font-semibold uppercase tracking-wider text-ink-muted;
+  }
+
+  .table tbody td {
+    @apply border-b border-line/70 px-3 py-2.5 align-middle text-ink;
+  }
+
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .table tbody tr {
+    @apply transition-colors duration-100;
+  }
+
+  .table-hover tbody tr:hover {
+    @apply bg-brand-50/40;
+  }
+
+  .table-row-link {
+    @apply cursor-pointer;
+  }
+
+  /* Used in eight templates and never defined until now, so every one of them
+     rendered a link as plain body text. Underlined on hover rather than always:
+     inside a dense table, permanently underlined identifiers are noise, but a
+     link that gives no affordance at all is not a link. */
+  .link {
+    @apply text-brand-700 underline-offset-2 transition-colors hover:text-brand-800 hover:underline;
+  }
+
+  /* ------------------------------------------------------------ nav rail -- */
+
+  .nav-section {
+    @apply px-3 pb-1 pt-4 text-2xs font-semibold uppercase tracking-wider text-ink-faint;
+  }
+
+  .nav-item {
+    @apply flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium
+           text-ink-secondary transition-colors duration-150
+           hover:bg-surface-sunken hover:text-ink;
+  }
+
+  .nav-item-active {
+    @apply nav-item bg-brand-50 font-semibold text-brand-700 hover:bg-brand-50 hover:text-brand-700;
+  }
+
+  .nav-icon {
+    @apply h-4 w-4 shrink-0;
+  }
+
+  .nav-count {
+    @apply ml-auto rounded-full bg-surface-sunken px-1.5 py-0.5 text-2xs font-semibold text-ink-muted;
+  }
+
+  .nav-count-alert {
+    @apply ml-auto rounded-full bg-critical-50 px-1.5 py-0.5 text-2xs font-semibold text-critical-700;
+  }
+
+  .nav-disclosure {
+    @apply mt-1 rounded-lg;
+  }
+
+  .nav-disclosure-summary {
+    @apply flex min-h-10 cursor-pointer list-none items-center rounded-lg px-3 py-2
+           text-2xs font-semibold uppercase tracking-wider text-ink-muted
+           transition-colors hover:bg-surface-sunken hover:text-ink;
+  }
+
+  .nav-disclosure-summary::-webkit-details-marker,
+  .nav-status-summary::-webkit-details-marker,
+  .disclosure-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav-disclosure-chevron {
+    @apply h-3.5 w-3.5 shrink-0 transition-transform duration-150;
+  }
+
+  .nav-disclosure[open] > .nav-disclosure-summary .nav-disclosure-chevron,
+  .nav-status[open] > .nav-status-summary .nav-disclosure-chevron,
+  details[open] > .disclosure-summary .nav-disclosure-chevron {
+    @apply rotate-180;
+  }
+
+  .nav-tools-count {
+    @apply min-w-5 rounded-full bg-surface-sunken px-1.5 py-0.5 text-center text-2xs
+           font-semibold text-ink-muted;
+  }
+
+  .nav-attention {
+    @apply h-2 w-2 rounded-full bg-critical-500 ring-2 ring-critical-100;
+  }
+
+  .nav-status {
+    @apply rounded-lg border border-line bg-surface-sunken/50;
+  }
+
+  .nav-status-summary {
+    @apply flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2;
+  }
+
+  .status-dot-safe,
+  .status-dot-warn {
+    @apply h-2 w-2 shrink-0 rounded-full;
+  }
+
+  .status-dot-safe {
+    @apply bg-safe-500;
+  }
+
+  .status-dot-warn {
+    @apply bg-warn-500;
+  }
+
+  /* Dense supporting evidence stays one click away without being removed. */
+  .disclosure-card {
+    @apply overflow-hidden rounded-xl border border-line bg-surface shadow-card;
+  }
+
+  .disclosure-summary {
+    @apply flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 sm:px-5;
+  }
+
+  .disclosure-summary:hover {
+    @apply bg-surface-sunken/60;
+  }
+
+  .disclosure-body {
+    @apply border-t border-line p-4 sm:p-5;
+  }
+
+  .disclosure-copy {
+    @apply min-w-0 flex-1;
+  }
+
+  .disclosure-title {
+    @apply block text-sm font-semibold text-ink;
+  }
+
+  .disclosure-hint {
+    @apply mt-0.5 block text-2xs leading-relaxed text-ink-muted;
+  }
+
+  .supporting-strip {
+    @apply flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line
+           bg-surface-sunken/60 px-3 py-2 text-xs text-ink-secondary;
+  }
+
+  /* ----------------------------------------------------------------- kpi -- */
+
+  .kpi {
+    @apply relative overflow-hidden rounded-xl border border-line bg-surface p-4 shadow-card
+           transition-shadow duration-150 hover:shadow-raised;
+  }
+
+  .kpi::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-[3px] bg-line-strong;
+  }
+
+  .kpi-label {
+    @apply flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-ink-muted;
+  }
+
+  .kpi-value {
+    @apply mt-2 text-3xl font-bold leading-none tracking-[-0.03em] text-ink;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi-unit {
+    @apply ml-1 text-sm font-medium tracking-normal text-ink-muted;
+  }
+
+  .kpi-foot {
+    @apply mt-2 flex min-h-[1.25rem] items-center gap-1.5 text-xs text-ink-secondary;
+  }
+
+  /* --------------------------------------------------------------- notes -- */
+
+  .note {
+    @apply rounded-lg border-l-[3px] p-3 text-sm leading-relaxed;
+  }
+
+  .note-info {
+    @apply note border-info-500 bg-info-50 text-info-700;
+  }
+
+  .note-warn {
+    @apply note border-warn-500 bg-warn-50 text-warn-700;
+  }
+
+  .note-critical {
+    @apply note border-critical-500 bg-critical-50 text-critical-700;
+  }
+
+  .note-neutral {
+    @apply note border-line-strong bg-surface-sunken text-ink-secondary;
+  }
+
+  /* --------------------------------------------------------------- empty -- */
+
+  .empty {
+    @apply rounded-xl border border-dashed border-line-strong bg-surface px-4 py-10 text-center;
+  }
+
+  .empty-title {
+    @apply text-sm font-semibold text-ink-secondary;
+  }
+
+  .empty-body {
+    @apply mx-auto mt-1 max-w-[46ch] text-xs text-ink-muted;
+  }
+
+  /* ------------------------------------------------------------ skeleton -- */
+
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-surface-sunken;
+  }
+
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer
+           bg-gradient-to-r from-transparent via-white/70 to-transparent;
+  }
+
+  /* --------------------------------------------------------------- steps -- */
+
+  .step {
+    @apply flex items-center gap-2 text-xs font-medium text-ink-muted;
+  }
+
+  .step-marker {
+    @apply grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line-strong
+           bg-surface text-2xs font-bold text-ink-muted;
+  }
+
+  .step-done .step-marker {
+    @apply border-safe-500 bg-safe-500 text-white;
+  }
+
+  .step-current {
+    @apply text-brand-700;
+  }
+
+  .step-current .step-marker {
+    @apply border-brand-500 bg-brand-50 text-brand-700;
+  }
+
+  /* -------------------------------------------------------------- htmx ---- */
+
+  /* A request in flight must be visible or the app feels broken on a slow link. */
+  .htmx-indicator {
+    @apply pointer-events-none opacity-0 transition-opacity duration-150;
+  }
+
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    @apply opacity-100;
+  }
+
+  .htmx-request.btn {
+    @apply pointer-events-none opacity-70;
+  }
+
+  [hx-swap-oob] {
+    @apply animate-fade-in;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .grid-lines {
+    background-image: linear-gradient(
+      to right,
+      theme("colors.line.DEFAULT") 1px,
+      transparent 1px
+    );
+  }
+}
+
+/* Urdu presentation. Nastaliq needs far more line height than a Latin face, and
+ * numbers, DINs and blood groups must stay left-to-right and in Latin script
+ * even inside an RTL paragraph (spec §10.4). */
+[dir="rtl"] body {
+  @apply font-urdu;
+}
+
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] p,
+[dir="rtl"] .nav-item,
+[dir="rtl"] .card-title {
+  line-height: 2.05;
+}
+
+[dir="rtl"] .num,
+[dir="rtl"] .font-mono,
+[dir="rtl"] .chip-group,
+[dir="rtl"] .kpi-value,
+[dir="rtl"] table {
+  direction: ltr;
+  unicode-bidi: isolate;
+  @apply font-sans;
+}
+
+[dir="rtl"] input[type="email"],
+[dir="rtl"] input[type="url"],
+[dir="rtl"] input[type="tel"],
+[dir="rtl"] input[name*="code"],
+[dir="rtl"] input[name*="din"] {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+  @apply font-sans;
+}
+
+[dir="rtl"] .kpi::before {
+  @apply left-auto right-0;
+}
+
+[dir="rtl"] .note {
+  @apply border-l-0 border-r-[3px];
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

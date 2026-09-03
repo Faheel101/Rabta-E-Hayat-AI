@@ -1,0 +1,167 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import empty with context %}
+
+{% block content %}
+
+{# ---------------------------------------------------------------- the plate #}
+<div class="card card-pad mb-4">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="text-lg font-semibold text-ink">
+        <span class="font-mono">{{ run.run_code }}</span>
+      </h2>
+      <p class="mt-0.5 text-xs text-ink-muted">
+        {{ run.test_code }}
+        {%- if run.method %} · {{ run.method }}{% endif %}
+        {%- if run.kit_lot %} · {{ t("ops.lot", lot=run.kit_lot) }}{% endif %}
+        {%- if run.kit_expiry %} · {{ t("common.expires") }} {{ run.kit_expiry|date }}{% endif %}
+        {%- if run.equipment %} · {{ run.equipment }}{% endif %}
+      </p>
+      <p class="mt-0.5 text-2xs text-ink-muted">
+        {{ t("ops.plate_opened", time=run.opened_at|datetime, actor=run.opened_by) }}
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      {% if run.controls_valid is false %}
+        <span class="badge-critical">{{ t("ops.controls_failed") }}</span>
+      {% elif run.controls_valid %}
+        <span class="badge-safe">{{ t("ops.controls_valid") }}</span>
+      {% else %}
+        <span class="badge-warn">{{ t("ops.controls_not_recorded") }}</span>
+      {% endif %}
+      <span class="badge-neutral">{{ t("ops.plate_status_" ~ run.status|lower) }}</span>
+    </div>
+  </div>
+</div>
+
+{% if run.controls_valid is false %}
+  <div class="card card-pad mb-4 border-l-4 border-l-critical-500">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.plate_invalid") }}</h3>
+    <p class="mt-1 text-xs text-ink-secondary">{{ t("ops.plate_invalid_body") }}</p>
+    {% if run.control_note %}
+      <p class="mt-2 rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+        {{ run.control_note }}
+      </p>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# ------------------------------------------------------------- the controls #}
+{% if run.controls_valid is none %}
+  <div class="card card-pad mb-4">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.controls") }}</h3>
+    <p class="mt-1 text-xs text-ink-muted">{{ t("ops.controls_help") }}</p>
+
+    <div class="mt-3 flex flex-wrap gap-2">
+      <form method="post" action="/app/lab/runs/{{ run.id }}/controls">
+        <input type="hidden" name="controls_valid" value="1">
+        <button type="submit" class="btn-primary">{{ t("ops.controls_valid") }}</button>
+      </form>
+
+      <form method="post" action="/app/lab/runs/{{ run.id }}/controls"
+            class="flex flex-1 flex-wrap items-end gap-2">
+        <input type="hidden" name="controls_valid" value="0">
+        <div class="flex-1">
+          <input class="field" name="note" autocomplete="off"
+                 placeholder="{{ t('ops.controls_failure_placeholder') }}">
+        </div>
+        <button type="submit" class="btn-secondary">{{ t("ops.controls_failed") }}</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{# ------------------------------------------------------------ enter results #}
+{% if run.status != "INVALIDATED" and candidates %}
+  <div class="card mb-4">
+    <div class="border-b border-line px-4 py-3">
+      <h3 class="text-sm font-semibold text-ink">
+        {{ t("ops.samples_awaiting", assay=run.test_code) }}
+      </h3>
+      <p class="mt-0.5 text-xs text-ink-muted">
+        {{ t("ops.reactive_atomic_help") }}
+      </p>
+    </div>
+
+    <form method="post" action="/app/lab/runs/{{ run.id }}/results">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ t("common.din") }}</th>
+              <th>{{ t("ops.donor") }}</th>
+              <th>{{ t("ops.collected") }}</th>
+              <th>{{ t("ops.result") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in candidates %}
+              <tr>
+                <td class="whitespace-nowrap font-mono text-xs">{{ row.din }}</td>
+                <td class="font-mono text-2xs text-ink-muted">{{ row.donor_code }}</td>
+                <td class="num whitespace-nowrap text-xs">{{ row.collected_at|datetime }}</td>
+                <td>
+                  <select class="field" name="result_{{ row.donation_id }}">
+                    <option value="">{{ t("ops.not_tested") }}</option>
+                    <option value="NON_REACTIVE">{{ t("ops.non_reactive") }}</option>
+                    <option value="REACTIVE">{{ t("ops.reactive") }}</option>
+                  </select>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="border-t border-line px-4 py-3">
+        <button type="submit" class="btn-primary">{{ t("ops.record_results") }}</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{# --------------------------------------------------------- what was recorded #}
+<div class="card">
+  <div class="flex items-center justify-between border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.recorded_plate") }}</h3>
+    {% if reactive_count %}
+      <span class="badge-critical">
+        {{ t("ops.reactive_count", count=reactive_count) }}
+      </span>
+    {% endif %}
+  </div>
+
+  {% if recorded %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>{{ t("common.din") }}</th><th>{{ t("ops.donor") }}</th><th>{{ t("ops.result") }}</th></tr>
+        </thead>
+        <tbody>
+          {% for row in recorded %}
+            <tr>
+              <td class="whitespace-nowrap font-mono text-xs">{{ row.din }}</td>
+              <td class="font-mono text-2xs text-ink-muted">{{ row.donor_code }}</td>
+              <td>
+                {% if row.is_reactive %}
+                  <span class="badge-critical">{{ t("ops.reactive") }}</span>
+                {% else %}
+                  <span class="badge-safe">{{ t("ops.non_reactive") }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="px-4 py-2 text-2xs text-ink-muted">{{ t("ops.immutable_result_note") }}</p>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.nothing_recorded"), t("ops.nothing_recorded_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

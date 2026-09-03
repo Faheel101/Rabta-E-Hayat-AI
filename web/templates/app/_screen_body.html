@@ -1,0 +1,259 @@
+{# The wizard body. Swapped in whole after each step, so the verdict is always
+   re-rendered by the server from core.eligibility — never recomputed in the
+   browser, which is how the screen and the record start disagreeing. #}
+
+{% set tones = {
+  "ACCEPTED": ["badge-safe", "border-l-safe-500", "ops.accepted"],
+  "DEFERRED": ["badge-critical", "border-l-critical-500", "ops.deferred"],
+  "INCOMPLETE": ["badge-neutral", "border-l-line-strong", "ops.incomplete"],
+} %}
+{% set tone = tones.get(verdict.outcome, tones["INCOMPLETE"]) %}
+
+<div id="screen-body">
+
+  {# --------------------------------------------------------- verdict panel #}
+  <div class="card card-pad mb-4 border-l-4 {{ tone[1] }}">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+          {{ t("ops.eligibility_so_far") }}
+        </p>
+        <p class="mt-1 flex items-center gap-2">
+          <span class="{{ tone[0] }}">{{ t(tone[2]) }}</span>
+          {% if verdict.collection_volume_ml %}
+            <span class="text-sm text-ink">
+              {{ t("ops.may_collect", volume=verdict.collection_volume_ml) }}
+            </span>
+          {% endif %}
+        </p>
+      </div>
+
+      {% if verdict.needs_signoff %}
+        <span class="badge-warn" title="{{ t('ops.needs_signoff_hint') }}">
+          {{ t("ops.needs_signoff") }}
+        </span>
+      {% endif %}
+    </div>
+
+    {% if verdict.assessment.deferrals %}
+      <div class="mt-3 space-y-2 border-t border-line pt-3">
+        {% for deferral in verdict.assessment.deferrals %}
+          <div class="rounded-md bg-surface-sunken p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-sm font-medium text-ink">{{ t("eligibility.reason_" ~ deferral.reason_code|lower) }}</span>
+              <span class="badge-neutral">{{ t("ops.deferral_kind_" ~ deferral.kind|lower) }}</span>
+            </div>
+            {% if deferral.detail and lang == "en" %}
+              <p class="mt-1 text-xs text-ink-secondary">{{ deferral.detail }}</p>
+            {% endif %}
+            {% if deferral.kind == "CONDITIONAL" %}
+              <p class="mt-1 text-2xs text-ink-muted">
+                {{ t("ops.conditional_deferral_help") }}
+              </p>
+            {% elif deferral.kind == "PERMANENT" %}
+              <p class="mt-1 text-2xs text-critical-700">
+                {{ t("ops.permanent_deferral_help") }}
+              </p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% for warning in verdict.assessment.warnings %}
+      <p class="mt-2 text-xs text-warn-700">{% if lang == "ur" and warning.startswith("Reduced-volume") %}{{ t("ops.reduced_volume_warning") }}{% elif lang == "ur" and warning.startswith("Malaria screening") %}{{ t("ops.malaria_disabled_warning") }}{% else %}{{ warning }}{% endif %}</p>
+    {% endfor %}
+  </div>
+
+  {% if is_draft %}
+
+    {# ------------------------------------------------------------- vitals #}
+    <div class="card card-pad mb-4">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.measurements_step") }}</h3>
+      <p class="mt-1 text-xs text-ink-muted">{{ t("ops.measurements_help") }}</p>
+
+      <form class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+            hx-post="/app/sessions/{{ session.id }}/screen/{{ screening.id }}/vitals"
+            hx-target="#screen-body"
+            hx-swap="outerHTML">
+        <div>
+          <label class="label" for="v-hb">{{ t("ops.haemoglobin") }}</label>
+          <input class="field num {% if is_camp %}text-base{% endif %}" id="v-hb"
+                 name="haemoglobin_g_dl" type="number" step="0.1" min="4" max="22"
+                 value="{{ screening.haemoglobin_g_dl or '' }}">
+        </div>
+
+        <div>
+          <label class="label" for="v-wt">{{ t("ops.weight") }}</label>
+          <input class="field num {% if is_camp %}text-base{% endif %}" id="v-wt"
+                 name="weight_kg" type="number" step="0.5" min="30" max="200"
+                 value="{{ screening.weight_kg or '' }}">
+        </div>
+
+        <div>
+          <label class="label" for="v-temp">{{ t("ops.temperature") }}</label>
+          <input class="field num" id="v-temp" name="temperature_c"
+                 type="number" step="0.1" min="34" max="42"
+                 value="{{ screening.temperature_c or '' }}">
+        </div>
+
+        <div>
+          <label class="label" for="v-sys">{{ t("ops.systolic_bp") }}</label>
+          <input class="field num" id="v-sys" name="systolic_bp" type="number"
+                 min="60" max="250" value="{{ screening.systolic_bp or '' }}">
+        </div>
+
+        <div>
+          <label class="label" for="v-dia">{{ t("ops.diastolic_bp") }}</label>
+          <input class="field num" id="v-dia" name="diastolic_bp" type="number"
+                 min="30" max="160" value="{{ screening.diastolic_bp or '' }}">
+        </div>
+
+        <div>
+          <label class="label" for="v-pulse">{{ t("ops.pulse") }}</label>
+          <input class="field num" id="v-pulse" name="pulse_bpm" type="number"
+                 min="30" max="200" value="{{ screening.pulse_bpm or '' }}">
+        </div>
+
+        <div class="flex items-end sm:col-span-2 lg:col-span-3">
+          <button type="submit" class="btn-primary">{{ t("ops.save_measurements") }}</button>
+        </div>
+      </form>
+    </div>
+
+    {# ------------------------------------------------------ questionnaire #}
+    <div class="card card-pad mb-4">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.history_step") }}</h3>
+      <p class="mt-1 text-xs text-ink-muted">{{ t("ops.history_help", count=questions|length) }}</p>
+
+      <form class="mt-3"
+            hx-post="/app/sessions/{{ session.id }}/screen/{{ screening.id }}/questions"
+            hx-target="#screen-body"
+            hx-swap="outerHTML">
+        <div class="{% if is_camp %}space-y-1{% else %}space-y-2{% endif %}">
+          {% for question in questions %}
+            <label class="flex items-start gap-3 rounded-md border border-line
+                          {% if is_camp %}p-3{% else %}p-2.5{% endif %}
+                          hover:bg-surface-sunken">
+              <input type="checkbox" name="{{ question.key }}" value="1"
+                     class="checkbox mt-0.5"
+                     {% if answers.get(question.key) %}checked{% endif %}>
+              <span class="text-sm text-ink">{{ t("eligibility.question_" ~ question.key) }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="btn-primary mt-3">{{ t("ops.save_answers") }}</button>
+      </form>
+    </div>
+
+    {# ------------------------------------------------------------ complete #}
+    <div class="card card-pad mb-4">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.complete_step") }}</h3>
+      <p class="mt-1 text-xs text-ink-muted">
+        {% if verdict.outcome == "DEFERRED" %}
+          {{ t("ops.complete_deferred_help") }}
+        {% else %}
+          {{ t("ops.complete_accepted_help") }}
+        {% endif %}
+      </p>
+
+      <form method="post"
+            action="/app/sessions/{{ session.id }}/screen/{{ screening.id }}/complete"
+            class="mt-3 flex flex-wrap items-end gap-3">
+        <div class="flex-1">
+          <label class="label" for="c-notes">{{ t("ops.notes_optional") }}</label>
+          <input class="field" id="c-notes" name="notes" autocomplete="off">
+        </div>
+        <button type="submit" class="btn-primary">{{ t("ops.complete_screening") }}</button>
+      </form>
+    </div>
+
+    <form method="post"
+          action="/app/sessions/{{ session.id }}/screen/{{ screening.id }}/abandon">
+      <input type="hidden" name="reason" value="{{ t('ops.donor_left_reason') }}">
+      <button type="submit" class="btn-ghost text-xs text-ink-muted">
+        {{ t("ops.abandon_screening") }}
+      </button>
+    </form>
+
+  {% else %}
+
+    {# --------------------------------------------------------- collection #}
+    {% if screening.outcome == "ACCEPTED" and not donation %}
+      <div class="card card-pad">
+        <h3 class="text-sm font-semibold text-ink">{{ t("ops.collection_step") }}</h3>
+        <p class="mt-1 text-xs text-ink-muted">{{ t("ops.collection_help") }}</p>
+
+        <form method="post"
+              action="/app/sessions/{{ session.id }}/screen/{{ screening.id }}/collect"
+              class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label class="label" for="k-bag">{{ t("ops.bag_kit") }}</label>
+            <select class="field" id="k-bag" name="bag_type">
+              <option value="TRIPLE">{{ t("ops.bag_triple") }}</option>
+              <option value="DOUBLE">{{ t("ops.bag_double") }}</option>
+              <option value="SINGLE">{{ t("ops.bag_single") }}</option>
+              <option value="APHERESIS_KIT">{{ t("ops.bag_apheresis") }}</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="label" for="k-type">{{ t("ops.donation_type") }}</label>
+            <select class="field" id="k-type" name="donation_type">
+              <option value="WHOLE_BLOOD">{{ t("ops.whole_blood") }}</option>
+              <option value="APHERESIS">{{ t("ops.apheresis") }}</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="label" for="k-reaction">{{ t("ops.adverse_reaction") }}</label>
+            <select class="field" id="k-reaction" name="adverse_reaction">
+              <option value="">{{ t("ops.reaction_none") }}</option>
+              <option value="VASOVAGAL_MILD">{{ t("ops.reaction_vasovagal_mild") }}</option>
+              <option value="VASOVAGAL_MODERATE">{{ t("ops.reaction_vasovagal_moderate") }}</option>
+              <option value="HAEMATOMA">{{ t("ops.reaction_haematoma") }}</option>
+              <option value="FAILED_VENEPUNCTURE">{{ t("ops.reaction_failed_venepuncture") }}</option>
+            </select>
+          </div>
+
+          <div class="flex items-end">
+            <button type="submit" class="btn-primary w-full">{{ t("ops.record_collection") }}</button>
+          </div>
+        </form>
+
+        {% if verdict.collection_volume_ml %}
+          <p class="mt-3 text-2xs text-ink-muted">{{ t("ops.permitted_volume", volume=verdict.collection_volume_ml) }}</p>
+        {% endif %}
+      </div>
+
+    {% elif donation %}
+      <div class="card card-pad border-l-4 border-l-safe-500">
+        <h3 class="text-sm font-semibold text-ink">{{ t("ops.collection_recorded") }}</h3>
+        <p class="mt-1 text-sm text-ink">
+          <span class="font-mono">{{ donation.din }}</span> ·
+          {{ t("ops.bag_summary", volume=donation.volume_ml, bag=donation.bag_type|lower) }}
+        </p>
+        <p class="mt-2 text-xs text-ink-muted">
+          {{ t("ops.quarantine_pending_lab") }}
+        </p>
+        <a class="btn-primary mt-3 inline-block"
+           href="/app/sessions/{{ session.id }}/screen">{{ t("ops.next_donor") }}</a>
+      </div>
+
+    {% else %}
+      <div class="card card-pad border-l-4 border-l-critical-500">
+        <h3 class="text-sm font-semibold text-ink">{{ t("ops.deferred_no_collection") }}</h3>
+        <p class="mt-1 text-xs text-ink-secondary">
+          {{ t("ops.deferred_recorded") }}
+          {% if verdict.needs_signoff %}
+            {{ t("ops.deferred_signoff_queue") }}
+          {% endif %}
+        </p>
+        <a class="btn-primary mt-3 inline-block"
+           href="/app/sessions/{{ session.id }}/screen">{{ t("ops.next_donor") }}</a>
+      </div>
+    {% endif %}
+
+  {% endif %}
+</div>

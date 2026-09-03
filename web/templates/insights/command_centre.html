@@ -1,0 +1,245 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, risk_badge, tier_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+{% from "ai/_components.html" import result_content with context %}
+
+{% block subheader %}
+<div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 sm:px-6">
+  <span class="badge-info badge-dot">
+    {{ t("cc.organization_scope") if scope_is_organization else t("cc.facility_scope") }}
+  </span>
+  <span class="text-2xs text-ink-muted">
+    {{ t("cc.pipeline_as_of", time=data_as_of) }}
+  </span>
+  {% if feeds.total %}
+    <span class="badge-{{ 'safe' if feeds.healthy == feeds.total else 'warn' }}">
+      {{ t("footer.feeds_healthy", healthy=feeds.healthy, total=feeds.total) }}
+    </span>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="mb-5 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="text-sm font-semibold text-brand-700">
+      {{ t("cc.greeting_morning") }}, {{ principal.display_name.split(' ')[0] }}
+    </p>
+    <h2 class="mt-1 text-xl">{{ t("cc.morning_read") }}</h2>
+    <p class="mt-1 max-w-3xl text-sm text-ink-muted">{{ t("cc.morning_read_help") }}</p>
+  </div>
+  {% if scope_facilities|length > 1 %}
+    <form method="get" class="min-w-[16rem]">
+      <label class="label" for="heatmap-facility">{{ t("cc.heatmap_facility") }}</label>
+      <select class="field" id="heatmap-facility" name="facility_id" onchange="this.form.submit()">
+        {% for facility in scope_facilities %}
+          <option value="{{ facility.id }}" {% if facility.id == selected_facility_id %}selected{% endif %}>
+            {{ facility.name_en }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+  {% endif %}
+</div>
+
+<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("cc.kpi_network_health"), summary.network_health_pct|pct(1), tone="safe" if summary.network_health_pct >= 80 else "warn", foot=t("cc.kpi_network_health_help"), help=t("cc.kpi_network_health_help")) }}
+  {{ kpi(t("cc.kpi_shortage_alerts"), summary.shortage_alerts|num, tone="critical" if summary.shortage_critical else "warn", foot=t("cc.critical_count", count=summary.shortage_critical), help=t("cc.kpi_shortage_alerts_help")) }}
+  {{ kpi(t("cc.kpi_expiring"), summary.expiring_72h|num, tone="critical" if summary.expiry_critical else "warn", foot=t("cc.act_now_count", count=summary.expiry_critical), help=t("cc.kpi_expiring_help")) }}
+  {{ kpi(t("cc.kpi_pending_transfers"), summary.pending_transfers|num, tone="info", foot=t("cc.awaiting"), help=t("cc.kpi_pending_transfers_help")) }}
+</div>
+<div class="supporting-strip mt-3"><strong class="num text-brand-700">{{ summary.rescued_mtd|num }}</strong><span>{{ t("cc.kpi_units_rescued") }} · {{ t("cc.month_to_date") }}</span></div>
+
+<section class="card mt-4 overflow-hidden">
+  <div>
+    <div class="card-pad">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 class="card-title">{{ t("cc.briefing") }}</h2><p class="mt-0.5 text-2xs text-ink-muted">{{ t("ai.inline_brief_help") }}</p></div>
+        <form method="post" action="/ai/command-brief" class="flex items-center gap-2">
+          <input type="hidden" name="facility_id" value="{{ selected_facility_id }}">
+          <input type="hidden" name="next" value="/insights/command-centre?facility_id={{ selected_facility_id }}">
+          <button class="btn-secondary btn-sm" type="submit">{{ icon("sparkles", "h-4 w-4") }} {{ t("ai.generate_brief") }}</button>
+        </form>
+      </div>
+      {% if ai_result %}
+        <div class="mt-4">{{ result_content(ai_result, true) }}</div>
+      {% else %}
+        <div class="mt-3 flex flex-wrap items-center gap-2"><span class="badge-neutral">{{ t("ai.deterministic_current") }}</span><span class="text-2xs text-ink-muted">{{ t("ai.generate_when_ready") }}</span></div>
+        <p class="mt-3 max-w-4xl text-sm leading-relaxed text-ink-secondary">
+          {{ t("cc.briefing_sentence", shortage=summary.shortage_alerts,
+               critical=summary.shortage_critical, expiring=summary.expiring_72h,
+               act_now=summary.expiry_critical, transfers=summary.pending_transfers) }}
+        </p>
+      {% endif %}
+      <div class="mt-4 flex flex-wrap gap-2">
+        <a class="btn-primary btn-sm" href="/insights/forecast?facility_id={{ selected_facility_id }}&view=compare">
+          {{ t("cc.review_shortages") }}
+        </a>
+        <a class="btn-secondary btn-sm" href="/insights/expiry-rescue">
+          {{ t("cc.review_expiry") }}
+        </a>
+      </div>
+    </div>
+    <details class="border-t border-line bg-surface-sunken/60">
+      <summary class="disclosure-summary">
+        <span class="disclosure-copy"><strong class="disclosure-title">{{ t("cc.quality_gates") }}</strong><span class="disclosure-hint">{{ t("common.supporting_details_help") }}</span></span>
+        {% if quality.available %}
+          <span class="badge-{{ 'safe' if quality.gates_passed == quality.gates_total else 'warn' }}">
+            {{ quality.gates_passed }}/{{ quality.gates_total }} {{ t("cc.passing") }}
+          </span>
+        {% endif %}
+        {{ icon("chevron-down", "nav-disclosure-chevron") }}
+      </summary>
+      <div class="border-t border-line p-4 sm:p-5">
+      {% if quality.available %}
+        <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          <div class="rounded-lg bg-surface p-2.5">
+            <span class="text-ink-muted">{{ t("cc.wape_decision") }}</span>
+            <strong class="mt-1 block num {{ 'text-safe-600' if quality.gates.wape else 'text-critical-600' }}">{{ quality.decision_wape|pct(1) }}</strong>
+          </div>
+          <div class="rounded-lg bg-surface p-2.5">
+            <span class="text-ink-muted">{{ t("cc.beats_naive") }}</span>
+            <strong class="mt-1 block num {{ 'text-safe-600' if quality.gates.beats_naive else 'text-critical-600' }}">{{ quality.beats_naive|pct(1) }}</strong>
+          </div>
+          <div class="rounded-lg bg-surface p-2.5">
+            <span class="text-ink-muted">P10–P90</span>
+            <strong class="mt-1 block num {{ 'text-safe-600' if quality.gates.coverage else 'text-critical-600' }}">{{ quality.coverage|pct(1) }}</strong>
+          </div>
+          <div class="rounded-lg bg-surface p-2.5">
+            <span class="text-ink-muted">{{ t("cc.shortage_recall") }}</span>
+            <strong class="mt-1 block num {{ 'text-safe-600' if quality.gates.recall else 'text-critical-600' }}">{{ quality.recall|pct(1) }}</strong>
+          </div>
+        </div>
+        <p class="mt-2 text-2xs leading-relaxed text-ink-muted">{{ t("cc.quality_honesty") }}</p>
+        <p class="mt-1 text-2xs leading-relaxed text-ink-muted">{{ t("cc.group_noise_context", wape=quality.group_wape|pct(1), floor=quality.noise_floor|pct(1)) }}</p>
+      {% else %}
+        <p class="mt-3 text-xs text-ink-muted">{{ t("fc.no_metrics") }}</p>
+      {% endif %}
+      </div>
+    </details>
+  </div>
+</section>
+
+<div class="mt-4 grid gap-4 xl:grid-cols-2">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("cc.shortage_queue") }}</h2>
+        <p class="mt-0.5 text-2xs text-ink-muted">{{ t("cc.shortage_queue_help") }}</p>
+      </div>
+      <a href="/insights/forecast?facility_id={{ selected_facility_id }}&view=compare" class="text-xs font-semibold text-info-600 hover:underline">{{ t("common.details") }}</a>
+    </div>
+    {% if shortage_actions %}
+      <ul class="divide-y divide-line">
+        {% for action in shortage_actions %}
+          <li class="flex items-center gap-3 px-4 py-3 sm:px-5">
+            {{ group_chip(action.group_code) }}
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="font-semibold text-ink">{{ action.component_code }}</p>
+                {{ risk_badge(action.risk_bucket) }}
+              </div>
+              <p class="mt-1 truncate text-xs text-ink-muted">{{ action.facility_name }}</p>
+              <p class="mt-1 text-2xs text-ink-secondary">
+                {{ action.shortage_probability|pct(0) }} {{ t("risk.label")|lower }} ·
+                {% if action.first_breach %}{{ t("cc.shortage_predicted", date=action.first_breach|date("%d %b")) }}{% else %}{{ t("fc.no_breach") }}{% endif %}
+              </p>
+            </div>
+            <a class="btn-ghost btn-sm shrink-0" href="/insights/forecast?facility_id={{ action.facility_id }}&component_id={{ action.component_id }}&blood_group_id={{ action.blood_group_id }}">
+              {{ t("cc.drill_in") }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ empty(t("cc.action_queue_empty"), t("fc.no_breach"), icon="check") }}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("cc.expiry_queue") }}</h2>
+        <p class="mt-0.5 text-2xs text-ink-muted">{{ t("cc.expiry_queue_help") }}</p>
+      </div>
+      <a href="/insights/expiry-rescue" class="text-xs font-semibold text-info-600 hover:underline">{{ t("common.details") }}</a>
+    </div>
+    {% if expiry_actions %}
+      <ul class="divide-y divide-line">
+        {% for action in expiry_actions %}
+          <li class="px-4 py-3 sm:px-5">
+            <div class="flex items-start gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-mono text-xs font-semibold">{{ action.din }}</span>
+                  {{ tier_badge(action.rescue_tier) }}
+                </div>
+                <p class="mt-1 text-xs text-ink-secondary">
+                  {{ action.component_code }} · {{ action.group_code }} · {{ action.facility_name }}
+                </p>
+                <p class="mt-1 text-2xs text-ink-muted">
+                  {% if action.destination_name %}{{ action.destination_name }} · {{ action.best_travel_minutes|num }} {{ t("common.minutes") }}{% endif %}
+                  {% if action.hours_to_deadline is not none %} · {{ t("cc.expires_in", hours=action.hours_to_deadline|round(0)|int) }}{% endif %}
+                </p>
+              </div>
+              <a class="btn-ghost btn-sm" href="/insights/unit-evidence/{{ action.blood_unit_id }}">{{ t("cc.open_unit") }}</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ empty(t("ex.no_units"), t("cc.no_expiry_actions"), icon="check") }}
+    {% endif %}
+  </section>
+</div>
+
+<details class="disclosure-card mt-4">
+  <summary class="disclosure-summary">
+    <div>
+      <strong class="disclosure-title">{{ t("cc.heatmap") }}</strong>
+      <span class="disclosure-hint">{{ t("cc.heatmap_help") }}</span>
+    </div>
+    <div class="ms-auto hidden items-center gap-2 text-2xs sm:flex">
+      <span class="badge-critical">&lt;2 d</span><span class="badge-warn">2–4 d</span><span class="badge-safe">≥4 d</span>
+    </div>
+    {{ icon("chevron-down", "nav-disclosure-chevron") }}
+  </summary>
+  {% if heatmap %}
+    <div class="overflow-x-auto p-4 sm:p-5">
+      <table class="w-full min-w-[760px] border-separate border-spacing-1.5 text-xs">
+        <thead>
+          <tr>
+            <th class="px-2 text-start text-2xs font-semibold uppercase tracking-wider text-ink-muted">{{ t("common.component") }}</th>
+            {% for group in heatmap_groups %}<th class="px-2 pb-1 text-center">{{ group_chip(group) }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for component in heatmap %}
+            <tr>
+              <th class="px-2 py-1 text-start font-semibold text-ink">{{ component.code }}</th>
+              {% for cell in component.cells %}
+                <td>
+                  {% if cell.blood_group_id %}
+                    <a href="/insights/forecast?facility_id={{ selected_facility_id }}&component_id={{ component.component_id }}&blood_group_id={{ cell.blood_group_id }}"
+                       class="block rounded-lg border p-2 text-center transition hover:-translate-y-0.5 hover:shadow-card
+                              {{ 'border-critical-200 bg-critical-50 text-critical-700' if cell.risk_bucket == 'CRITICAL'
+                                 else 'border-warn-200 bg-warn-50 text-warn-700' if cell.risk_bucket in ['WARNING', 'WATCH']
+                                 else 'border-safe-200 bg-safe-50 text-safe-700' }}">
+                      <span class="num block text-sm font-bold">{{ cell.days_of_cover|num(1) }} d</span>
+                      <span class="num mt-0.5 block text-2xs opacity-75">{{ cell.units|num }} {{ t("common.units") }}</span>
+                    </a>
+                  {% else %}
+                    <div class="rounded-lg border border-line bg-surface-sunken p-2 text-center text-ink-faint" title="{{ t('cc.heatmap_no_demand') }}">—</div>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {{ empty(t("common.no_data"), t("cc.heatmap_no_demand")) }}
+  {% endif %}
+</details>
+{% endblock %}

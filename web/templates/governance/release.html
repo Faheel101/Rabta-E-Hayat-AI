@@ -1,0 +1,153 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+<div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 sm:px-6">
+  <span class="badge-brand">{{ t("release.candidate", version=version) }}</span>
+  <span class="badge-{{ 'safe' if release_ready else 'warn' }} badge-dot">
+    {{ t("release.ready") if release_ready else t("release.attention") }}
+  </span>
+  <span class="text-2xs text-ink-muted">{{ t("release.read_only") }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="card overflow-hidden">
+  <div class="grid gap-6 bg-gradient-to-br from-ink via-brand-900 to-brand-700 p-6 text-white sm:p-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,.65fr)] xl:items-end">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-white/65">{{ t("release.eyebrow") }}</p>
+      <h2 class="mt-3 max-w-4xl text-2xl font-bold leading-tight text-white sm:text-3xl">{{ t("release.headline") }}</h2>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-white/80 sm:text-base">{{ t("release.intro") }}</p>
+      <div class="mt-5 flex flex-wrap gap-2">
+        <a class="inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-brand-800 shadow-card transition hover:bg-brand-50" href="#workflow-chain">
+          {{ icon("route", "h-4 w-4") }} {{ t("release.review_workflows") }}
+        </a>
+        <a class="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/35 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10" href="/showcase">
+          {{ icon("play", "h-4 w-4") }} {{ t("release.open_showcase") }}
+        </a>
+      </div>
+    </div>
+    <dl class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/15 bg-white/10 text-xs">
+      <div class="bg-ink/35 p-3"><dt class="text-white/55">{{ t("release.version") }}</dt><dd class="num mt-1 font-bold text-white">{{ version }}</dd></div>
+      <div class="bg-ink/35 p-3"><dt class="text-white/55">{{ t("release.scenario") }}</dt><dd class="num mt-1 font-bold text-white">{{ scenario_date|date }}</dd></div>
+      <div class="bg-ink/35 p-3"><dt class="text-white/55">{{ t("release.roles") }}</dt><dd class="num mt-1 font-bold text-white">7</dd></div>
+      <div class="bg-ink/35 p-3"><dt class="text-white/55">{{ t("release.identities") }}</dt><dd class="num mt-1 font-bold text-white">{{ identities|length }}</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="mt-4 card">
+  <div class="card-head">
+    <div><h2 class="card-title">{{ t("release.live_gates") }}</h2><p class="card-hint">{{ t("release.live_gates_help") }}</p></div>
+    <span class="badge-{{ 'safe' if release_ready else 'warn' }}">{{ gates|selectattr('ready')|list|length }}/{{ gates|length }}</span>
+  </div>
+  <div class="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-4">
+    {% for gate in gates %}
+    <article class="bg-surface p-4 sm:p-5">
+      <div class="flex items-start justify-between gap-3">
+        <span class="grid h-8 w-8 place-items-center rounded-lg {{ 'bg-safe-50 text-safe-700' if gate.ready else 'bg-warn-50 text-warn-700' }}">
+          {{ icon("check" if gate.ready else "alert", "h-4 w-4") }}
+        </span>
+        <span class="badge-{{ 'safe' if gate.ready else 'warn' }}">{{ t("release.pass") if gate.ready else t("release.review") }}</span>
+      </div>
+      <h3 class="mt-3 text-sm font-bold text-ink">{{ t(gate.label_key) }}</h3>
+      <p class="mt-1 text-xs leading-relaxed text-ink-muted">{{ t(gate.detail_key) }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="{{ t('release.live_state') }}">
+  {{ kpi(t("release.active_facilities"), counts.facilities|num, tone="brand", foot=t("release.organizations_count", count=counts.organizations|num)) }}
+  {{ kpi(t("release.available_units"), counts.available_units|num, tone="info", foot=t("release.traceable_supply")) }}
+  {{ kpi(t("release.open_requests"), counts.open_requests|num, tone="warn", foot=t("release.transactional_now")) }}
+  {{ kpi(t("release.audit_events"), counts.audit_events|num, tone="safe", foot=t("release.accountability")) }}
+</section>
+
+<section id="workflow-chain" class="mt-4 card scroll-mt-28">
+  <div class="card-head">
+    <div><h2 class="card-title">{{ t("release.workflow_chain") }}</h2><p class="card-hint">{{ t("release.workflow_chain_help") }}</p></div>
+    <span class="badge-neutral num">{{ workflows|length }}</span>
+  </div>
+  <ol class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-4">
+    {% for workflow in workflows %}
+    <li class="bg-surface p-4 sm:p-5">
+      <div class="flex min-w-0 items-start justify-between gap-3">
+        <span class="grid h-8 w-8 place-items-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">{{ "%02d"|format(loop.index) }}</span>
+        <span class="num min-w-0 flex-1 whitespace-normal text-end text-2xs leading-relaxed text-ink-muted">{{ workflow.workflow_ids|join(" · ") }}</span>
+      </div>
+      <h3 class="mt-3 text-sm font-bold text-ink">{{ t(workflow.title_key) }}</h3>
+      <p class="mt-1 text-xs leading-relaxed text-ink-secondary">{{ t(workflow.delta_key) }}</p>
+      <p class="mt-3 border-t border-line pt-3 text-2xs text-ink-muted">{{ t("release.automated_evidence", count=workflow.evidence|length) }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<div class="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,.85fr)]">
+  <section class="card min-w-0">
+    <div class="card-head">
+      <div><h2 class="card-title">{{ t("release.role_handoffs") }}</h2><p class="card-hint">{{ t("release.role_handoffs_help") }}</p></div>
+      <span class="badge-neutral num">{{ identities|length }}</span>
+    </div>
+    <div class="divide-y divide-line sm:hidden">
+      {% for item in identities %}
+        {% set identity = item.contract %}
+        <article class="p-4">
+          <div class="flex items-start gap-3">
+            <span class="status-dot mt-1.5 shrink-0 {{ 'bg-safe-500' if item.ready else 'bg-warn-500' }}"></span>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold text-ink">{{ identity.name }}</h3><span class="badge-neutral">{{ t(identity.role_key) }}</span></div>
+              <p class="mt-1 break-all text-2xs text-ink-muted" dir="ltr">{{ identity.email }}</p>
+              <p class="num mt-3 text-2xs leading-relaxed text-ink-secondary">{{ identity.workflow_ids|join(" · ") }}</p>
+              <p class="num mt-1 text-2xs text-brand-700" dir="ltr">{{ identity.start_path }}</p>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    <div class="hidden overflow-x-auto sm:block">
+      <table class="table">
+        <thead><tr><th>{{ t("release.account") }}</th><th>{{ t("topbar.role") }}</th><th>{{ t("release.workflow_ids") }}</th><th class="text-end">{{ t("release.start_path") }}</th></tr></thead>
+        <tbody>
+        {% for item in identities %}
+          {% set identity = item.contract %}
+          <tr>
+            <td><div class="flex items-center gap-2"><span class="status-dot {{ 'bg-safe-500' if item.ready else 'bg-warn-500' }}"></span><div><p class="font-semibold text-ink">{{ identity.name }}</p><p class="text-2xs text-ink-muted" dir="ltr">{{ identity.email }}</p></div></div></td>
+            <td><span class="badge-neutral">{{ t(identity.role_key) }}</span></td>
+            <td class="num text-2xs text-ink-secondary">{{ identity.workflow_ids|join(" · ") }}</td>
+            <td class="num text-end text-2xs text-ink-secondary" dir="ltr">{{ identity.start_path }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="min-w-0 space-y-4">
+    <section class="card">
+      <div class="card-head"><div><h2 class="card-title">{{ t("release.operating_modes") }}</h2><p class="card-hint">{{ t("release.operating_modes_help") }}</p></div><span class="badge-{{ 'safe' if modes|selectattr('ready')|list|length == modes|length else 'warn' }}">{{ modes|selectattr('ready')|list|length }}/{{ modes|length }}</span></div>
+      <div class="divide-y divide-line">
+      {% for item in modes %}
+        <article class="flex gap-3 p-4 sm:px-5">
+          <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full {{ 'bg-safe-50 text-safe-700' if item.ready else 'bg-warn-50 text-warn-700' }}">{{ icon("check" if item.ready else "alert", "h-3.5 w-3.5") }}</span>
+          <div class="min-w-0"><h3 class="text-xs font-bold text-ink">{{ t(item.contract.title_key) }}</h3><p class="mt-1 text-2xs leading-relaxed text-ink-secondary">{{ t(item.contract.proof_key) }}</p><p class="mt-1 truncate text-2xs text-ink-muted" title="{{ item.detail }}">{{ item.detail }}</p></div>
+        </article>
+      {% endfor %}
+      </div>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("release.operator_next") }}</h2>
+      <p class="card-hint">{{ t("release.operator_next_help") }}</p>
+      <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <a class="btn-primary" href="/showcase">{{ t("release.run_demo") }}</a>
+        <a class="btn-secondary" href="/admin/onboarding">{{ t("release.verify_onboarding") }}</a>
+        <a class="btn-secondary" href="/app/getting-started">{{ t("release.open_role_guide") }}</a>
+      </div>
+      <p class="mt-4 border-t border-line pt-3 text-2xs leading-relaxed text-ink-muted">{{ t("release.cli_note") }}</p>
+    </section>
+  </aside>
+</div>
+{% endblock %}

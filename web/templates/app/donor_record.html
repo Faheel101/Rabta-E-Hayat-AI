@@ -1,0 +1,251 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge, empty with context %}
+
+{% macro field(label, value, mono=false) %}
+  <div>
+    <dt class="label mb-0.5">{{ label }}</dt>
+    <dd class="text-sm text-ink {% if mono %}font-mono text-xs{% endif %}">
+      {{ value if value not in (None, "") else "—" }}
+    </dd>
+  </div>
+{% endmacro %}
+
+{% block toolbar %}
+{% if can_trace_units %}
+{# The recall query. Reached from the donor rather than from stock, because the
+   moment you need it you have a donor in front of you — a later reactive
+   result, or somebody phoning in unwell after giving — and the question is
+   which of their earlier units are still findable. #}
+<a href="/app/inventory/recall/{{ donor.id }}" class="btn-secondary text-2xs">
+  {{ t("ops.trace_units") }}
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------------------ identity card #}
+<div class="card card-pad mb-4">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="text-lg font-semibold text-ink">
+        {{ donor.full_name or t("ops.unnamed_donor") }}
+      </h2>
+      <p class="mt-0.5 text-xs text-ink-muted">
+        <span class="font-mono">{{ donor.donor_code }}</span>
+        {%- if age %} · {{ age }} {{ t("ops.years") }}{% endif %}
+        {%- if donor.gender %} · {{ t("ops." ~ donor.gender|lower) }}{% endif %}
+        {%- if facility_name %} · {{ facility_name }}{% endif %}
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      {% if group %}{{ group_chip(group) }}{% endif %}
+      {% set tones = {"success": "badge-safe", "warning": "badge-warn",
+                      "critical": "badge-critical", "neutral": "badge-neutral"} %}
+      <span class="{{ tones.get(state.tone, 'badge-neutral') }}">{{ t("ops.state_" ~ state.code|lower, days=state.days or "") }}</span>
+    </div>
+  </div>
+
+  <p class="mt-3 rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+    {% if state.code == "DEFERRED" %}{{ t("ops.state_deferred_detail", date=state.until|date) }}
+    {% elif state.code == "INTERVAL" %}{{ t("ops.state_interval_detail", date=state.until|date) }}
+    {% elif state.code == "AGE" %}{{ t("ops.state_age_detail", age=state.age, minimum=state.minimum_age, maximum=state.maximum_age) }}
+    {% else %}{{ t("ops.state_" ~ state.code|lower ~ "_detail") }}{% endif %}
+  </p>
+
+  <dl class="mt-4 grid gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-4">
+    {{ field(t("ops.donor_type"), t("ops.donor_type_" ~ donor.donor_type|lower) if donor.donor_type else "—") }}
+    {{ field(t("ops.donations"), donor.total_donations|num) }}
+    {{ field(t("ops.first_donation"), donor.first_donation_at|date if donor.first_donation_at else t("ops.none_recorded")) }}
+    {{ field(t("ops.last_donation"), donor.last_donation_at|date if donor.last_donation_at else t("ops.none_recorded")) }}
+    {{ field(t("ops.district"), donor.district) }}
+    {{ field(t("common.phone"), donor.phone if donor.consent_contact else t("ops.contact_not_consented"), mono=true) }}
+    {{ field("CNIC", "•••• •••••• " ~ donor.cnic_last4 if donor.cnic_last4 else None, mono=true) }}
+    {{ field(t("common.blood_group"), (group ~ " (" ~ (t("ops.confirmed") if donor.blood_group_confirmed else t("ops.unconfirmed")) ~ ")") if group else None) }}
+  </dl>
+
+  <p class="mt-3 text-2xs text-ink-muted">{{ t("ops.cnic_privacy_note") }}</p>
+</div>
+
+{# ------------------------------------------------------- eligibility detail #}
+{% if assessment.deferrals or assessment.warnings %}
+  <div class="card card-pad mb-4">
+    <h3 class="mb-3 text-sm font-semibold text-ink">{{ t("ops.eligibility_findings") }}</h3>
+
+    {% for deferral in assessment.deferrals %}
+      <div class="mb-2 rounded-md border border-line-strong bg-surface-sunken p-3">
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm font-medium text-ink">{{ t("eligibility.reason_" ~ deferral.reason_code|lower) }}</span>
+          <span class="badge-neutral">{{ t("ops.deferral_kind_" ~ deferral.kind|lower) }}</span>
+        </div>
+        {% if deferral.detail and lang == "en" %}
+          <p class="mt-1 text-xs text-ink-secondary">{{ deferral.detail }}</p>
+        {% endif %}
+        {% if deferral.kind == "TIMED" and deferral.until %}
+          <p class="mt-1 text-2xs text-ink-muted">{{ t("ops.eligible_again", date=deferral.until|date) }}</p>
+        {% elif deferral.kind == "CONDITIONAL" %}
+          <p class="mt-1 text-2xs text-ink-muted">
+            {{ t("ops.conditional_review_help") }}
+          </p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% for warning in assessment.warnings %}
+      <p class="text-xs text-ink-secondary">{{ warning }}</p>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# -------------------------------------------------------- donation history #}
+<div class="card mb-4">
+  <div class="flex items-center justify-between border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.donation_history") }}</h3>
+    <span class="text-2xs text-ink-muted">
+      {{ t("ops.records_in_system", count=donations|length) }}
+    </span>
+  </div>
+
+  {% if donations %}
+    <div class="divide-y divide-line">
+      {% for donation in donations %}
+        {% set tests = tests_by_donation.get(donation.id, []) %}
+        {% set units = units_by_donation.get(donation.id, []) %}
+        {% set reactive = tests|selectattr("is_reactive")|list %}
+
+        <div class="px-4 py-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="font-mono text-xs font-medium text-ink">{{ donation.din }}</span>
+              <span class="ms-2 text-xs text-ink-secondary">
+                {{ donation.collected_at|datetime }}
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              {% if donation.status == "QUARANTINED" %}
+                <span class="badge-critical">{{ t("ops.quarantined_reactive") }}</span>
+              {% else %}
+                <span class="badge-safe">{{ t("ops.released") }}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <p class="mt-1 text-2xs text-ink-muted">
+            {{ t("ops." ~ donation.donation_type|lower) if donation.donation_type else "—" }}
+            · {{ t("ops.bag_" ~ donation.bag_type|lower) }}
+            · <span class="num">{{ donation.volume_ml }}</span> ml
+            {%- if donation.session_name %} · {{ donation.session_name }}{% endif %}
+            {%- if donation.phlebotomist %} · {{ t("ops.collected_by", actor=donation.phlebotomist) }}{% endif %}
+          </p>
+
+          {% if donation.adverse_reaction %}
+            <p class="mt-1 text-2xs text-warn-700">
+              {{ t("ops.adverse_reaction_recorded", reaction=t("ops.reaction_" ~ donation.adverse_reaction|lower)) }}
+            </p>
+          {% endif %}
+
+          {% if tests %}
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              {% for test in tests %}
+                <span class="{{ 'badge-critical' if test.is_reactive else 'badge-neutral' }}"
+                      title="{{ test.method }} · {{ t('ops.tested_by', actor=test.tested_by) }}{% if test.verified_by %} · {{ t('ops.verified_by', actor=test.verified_by) }}{% else %} · {{ t('ops.not_independently_verified') }}{% endif %}">
+                  {{ test.test_code }}
+                  {{ t("ops.reactive") if test.is_reactive else t("ops.clear") }}
+                </span>
+              {% endfor %}
+            </div>
+
+            {% if tests|rejectattr("verified_by")|list %}
+              <p class="mt-1 text-2xs text-warn-700">
+                {{ t("ops.verification_gap") }}
+              </p>
+            {% endif %}
+          {% endif %}
+
+          {% if units %}
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full text-2xs">
+                <tbody>
+                  {% for unit in units %}
+                    <tr class="border-t border-line">
+                      <td class="py-1 pe-3 font-mono">{{ unit.din }}</td>
+                      <td class="py-1 pe-3">{{ unit.component_code }}</td>
+                      <td class="py-1 pe-3">{{ status_badge(unit.status) }}</td>
+                      <td class="num py-1 pe-3 text-ink-muted">
+                        {{ t("common.expires") }} {{ unit.expires_at|date }}
+                      </td>
+                      <td class="py-1 text-ink-muted">
+                        {{ (unit.discard_reason or "")|replace("_", " ")|lower }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.no_donations"), t("ops.no_donations_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{# -------------------------------------------------------- screening history #}
+<div class="card">
+  <div class="border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.screening_history") }}</h3>
+  </div>
+
+  {% if screenings %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("ops.screened") }}</th>
+            <th>{{ t("ops.outcome") }}</th>
+            <th class="text-end">Hb</th>
+            <th class="text-end">Weight</th>
+            <th class="text-end">BP</th>
+            <th class="text-end">Pulse</th>
+            <th class="text-end">Temp</th>
+            <th>{{ t("ops.screened_by") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in screenings %}
+            <tr>
+              <td class="num whitespace-nowrap text-xs">{{ row.screened_at|datetime }}</td>
+              <td>
+                {% if row.outcome == "DEFERRED" %}
+                  <span class="badge-warn"
+                        title="{{ t('ops.deferral_days', days=row.deferral_days) }}">
+                    {{ t("eligibility.reason_" ~ row.deferral_reason_code|lower) if row.deferral_reason_code else t("ops.deferred") }}
+                  </span>
+                {% else %}
+                  <span class="badge-safe">{{ t("ops.accepted") }}</span>
+                {% endif %}
+              </td>
+              <td class="num text-end text-xs">{{ row.haemoglobin_g_dl }}</td>
+              <td class="num text-end text-xs">{{ row.weight_kg }}</td>
+              <td class="num text-end text-xs">{{ row.systolic_bp }}/{{ row.diastolic_bp }}</td>
+              <td class="num text-end text-xs">{{ row.pulse_bpm }}</td>
+              <td class="num text-end text-xs">{{ row.temperature_c }}</td>
+              <td class="text-xs text-ink-secondary">{{ row.screened_by }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="px-4 py-2 text-2xs text-ink-muted">{{ t("ops.hb_method_note") }}</p>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.no_screenings"), t("ops.no_screenings_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

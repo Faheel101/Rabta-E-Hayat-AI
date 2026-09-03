@@ -1,0 +1,120 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, status_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+{% set filters_active = filters.q or filters.status or filters.direction %}
+<details class="border-t border-line" {% if filters_active %}open{% endif %}>
+<summary class="disclosure-summary min-h-12 px-4 py-2 sm:px-6"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.filters") }}</strong><span class="disclosure-hint">{{ t("common.filters_help") }}</span></span>{% if filters_active %}<span class="badge-info">{{ t("common.active") }}</span>{% endif %}{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+<form method="get" class="grid gap-2 border-t border-line px-4 py-3 sm:grid-cols-2 sm:px-6 lg:grid-cols-[minmax(14rem,1.5fr)_minmax(9rem,.8fr)_minmax(9rem,.8fr)_auto]">
+  <input type="hidden" name="view" value="{{ filters.view }}">
+  <div>
+    <label class="label" for="q">{{ t("tr.search") }}</label>
+    <input class="field" id="q" name="q" value="{{ filters.q }}" placeholder="{{ t('tr.search_placeholder') }}">
+  </div>
+  <div>
+    <label class="label" for="status">{{ t("common.status") }}</label>
+    <select class="field" id="status" name="status">
+      <option value="">{{ t("tr.all_statuses") }}</option>
+      {% for value in status_filters %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ t("tr.status_" ~ value|lower) }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="direction">{{ t("tr.direction") }}</label>
+    <select class="field" id="direction" name="direction">
+      <option value="">{{ t("common.all") }}</option>
+      <option value="outbound" {% if filters.direction == 'outbound' %}selected{% endif %}>{{ t("tr.outbound") }}</option>
+      <option value="inbound" {% if filters.direction == 'inbound' %}selected{% endif %}>{{ t("tr.inbound") }}</option>
+    </select>
+  </div>
+  <div class="flex items-end"><button class="btn-primary w-full" type="submit">{{ t("fc.update_view") }}</button></div>
+</form>
+</details>
+{% endblock %}
+
+{% block content %}
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 class="text-xl">{{ t("tr.current_plan") }}</h2>
+      {% if plan %}<span class="badge-neutral font-mono">{{ plan.id[:8]|upper }}</span>{% endif %}
+    </div>
+    <p class="mt-1 max-w-3xl text-sm text-ink-muted">{{ t("tr.workspace_subtitle") }}</p>
+  </div>
+  {% if plan %}
+  <div class="text-end text-xs text-ink-muted">
+    <span class="block">{{ t("tr.generated_at") }} <span class="num" dir="ltr">{{ plan.created_at|datetime }}</span></span>
+    <span class="mt-1 inline-flex badge-info">{{ t("tr.plan_type_" ~ plan.plan_type|lower) }} · {{ t("tr.plan_state_" ~ plan.status|lower) }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label="{{ t('tr.plan_views') }}">
+  <a href="?view=current" class="whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold {{ 'border-brand-500 text-brand-700' if filters.view == 'current' else 'border-transparent text-ink-muted' }}">{{ t("tr.current_plan") }}</a>
+  <a href="?view=history" class="whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold {{ 'border-brand-500 text-brand-700' if filters.view == 'history' else 'border-transparent text-ink-muted' }}">{{ t("tr.history") }}</a>
+</nav>
+
+<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("tr.pending_approval"), summary.pending|num, tone="warn" if summary.pending else "safe", foot=t("tr.human_gate")) }}
+  {{ kpi(t("tr.approved"), summary.approved|num, tone="info", foot=t("tr.ready_for_dispatch")) }}
+  {{ kpi(t("tr.in_transit"), summary.in_transit|num, tone="info", foot=t("tr.live_custody")) }}
+  {{ kpi(t("tr.exceptions"), summary.exceptions|num, tone="critical" if summary.exceptions else "safe", foot=t("tr.quarantine_on_exception")) }}
+</div>
+<div class="supporting-strip mt-3"><strong class="num text-brand-700">{{ summary.units|num }}</strong><span>{{ t("common.units") }} · {{ t("tr.across_routes", count=summary.routes) }}</span></div>
+
+<section class="card mt-4 overflow-hidden">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">{{ t("tr.execution_queue") }}</h2>
+      <p class="mt-0.5 text-2xs text-ink-muted">{{ t("tr.execution_help") }}</p>
+    </div>
+    <span class="card-hint">{{ t("common.showing", shown=rows|length, total=total) }}</span>
+  </div>
+
+  {% if rows %}
+  <div class="hidden border-b border-line bg-surface-sunken px-5 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-muted lg:grid lg:grid-cols-[minmax(15rem,1.5fr)_minmax(9rem,.8fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_auto] lg:gap-4">
+    <span>{{ t("tr.route") }}</span><span>{{ t("common.component") }}</span><span>{{ t("common.units") }}</span><span>{{ t("common.status") }}</span><span></span>
+  </div>
+  <ul class="divide-y divide-line">
+    {% for row in rows %}
+    {% set record = row.record %}
+    <li class="px-4 py-4 transition-colors hover:bg-surface-sunken sm:px-5">
+      <div class="grid items-center gap-3 lg:grid-cols-[minmax(15rem,1.5fr)_minmax(9rem,.8fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_auto] lg:gap-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="{{ 'badge-info' if row.direction == 'inbound' else 'badge-warn' if row.direction == 'outbound' else 'badge-neutral' }}">{{ t("tr." ~ row.direction) }}</span>
+            {% if record.tracking_code %}<span class="font-mono text-2xs text-ink-muted">{{ record.tracking_code }}</span>{% endif %}
+          </div>
+          <p class="mt-1.5 truncate text-xs font-semibold text-ink">{{ row.source_name }}</p>
+          <div class="mt-1 flex items-center gap-1.5 text-2xs text-ink-muted">
+            <span aria-hidden="true">→</span><span class="truncate">{{ row.destination_name }}</span>
+          </div>
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2"><strong class="text-xs">{{ row.component_code }}</strong>{{ group_chip(row.group_code) }}</div>
+          {% if row.recipient_group_code and row.recipient_group_code != row.group_code %}<p class="mt-1 text-2xs text-ink-muted">{{ t("tr.for_recipient") }} {{ row.recipient_group_code }} · {{ t("tr.preference_rank", rank=record.preference_rank) }}</p>{% endif %}
+        </div>
+        <div><strong class="num text-base">{{ record.units }}</strong><p class="text-2xs text-ink-muted">{{ record.est_travel_minutes|num }} {{ t("common.minutes") }} · {{ record.distance_km|num }} km</p></div>
+        <div>{{ status_badge(record.status) }}{% if record.receipt_disposition %}<p class="mt-1 text-2xs text-ink-muted">{{ record.receipt_disposition|replace('_',' ')|title }}</p>{% endif %}</div>
+        <div class="flex justify-end"><a class="btn-secondary btn-sm" href="/insights/transfer-plan/{{ record.id }}">{{ t("tr.open_transfer") }}</a></div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    {{ empty(t("tr.no_history") if filters.view == 'history' else t("tr.no_matching_transfers"), t("tr.no_history_help") if filters.view == 'history' else t("tr.no_matching_help"), icon="check") }}
+  {% endif %}
+</section>
+
+{% if pages > 1 %}
+<nav class="mt-4 flex items-center justify-between gap-3" aria-label="{{ t('common.pagination') }}">
+  <span class="text-xs text-ink-muted">{{ t("common.page_of", page=page, pages=pages) }}</span>
+  <div class="flex gap-2">
+    {% if page > 1 %}<a class="btn-secondary btn-sm" href="?view={{ filters.view }}&q={{ filters.q|urlencode }}&status={{ filters.status }}&direction={{ filters.direction }}&page={{ page - 1 }}">{{ t("common.previous") }}</a>{% endif %}
+    {% if page < pages %}<a class="btn-secondary btn-sm" href="?view={{ filters.view }}&q={{ filters.q|urlencode }}&status={{ filters.status }}&direction={{ filters.direction }}&page={{ page + 1 }}">{{ t("common.next") }}</a>{% endif %}
+  </div>
+</nav>
+{% endif %}
+
+<div class="note-info mt-4">{{ t("tr.governance_notice") }}</div>
+{% endblock %}

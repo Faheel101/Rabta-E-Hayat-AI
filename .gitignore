@@ -1,0 +1,39 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.envrc
+.streamlit/secrets.toml
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# JavaScript and generated assets
+node_modules/
+npm-debug.log*
+
+# Local data and release output
+*.db
+*.db-*
+*.sqlite3
+*.db.json
+backups/
+artifacts/
+
+# IDE and operating-system files
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,112 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, group_chip, status_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block toolbar %}
+  {% if can_create %}
+    <a href="/app/requests/new" class="btn-primary">{{ t("req.new_request") }}</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="mb-3 grid gap-3 sm:grid-cols-3">
+  {{ kpi(t("req.kpi_open"), counts.open, foot=t("req.kpi_open_foot"), tone="brand") }}
+  {{ kpi(t("req.kpi_emergency"), counts.emergency, foot=t("req.kpi_emergency_foot"), tone="critical") }}
+  {{ kpi(t("req.kpi_overdue"), counts.overdue, foot=t("req.kpi_overdue_foot"), tone="warn") }}
+</div>
+<div class="supporting-strip mb-4"><strong class="num text-ink">{{ counts.allocated }}</strong><span>{{ t("req.kpi_allocated") }} · {{ t("req.kpi_allocated_foot") }}</span></div>
+
+{% set filters_active = filters.q or filters.urgency or filters.status not in ['', 'OPEN'] %}
+<details class="disclosure-card mb-4" {% if filters_active %}open{% endif %}>
+  <summary class="disclosure-summary">
+    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-ink-secondary">{{ icon("search", "h-4 w-4") }}</span>
+    <span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.filters") }}</strong><span class="disclosure-hint">{{ t("common.filters_help") }}</span></span>
+    {% if filters_active %}<span class="badge-info">{{ t("common.active") }}</span>{% endif %}
+    {{ icon("chevron-down", "nav-disclosure-chevron") }}
+  </summary>
+  <form method="get" action="/app/requests" class="disclosure-body grid gap-3 md:grid-cols-[minmax(16rem,1fr)_12rem_13rem_auto]">
+  <div>
+    <label class="label" for="request-search">{{ t("req.search_label") }}</label>
+    <input class="field" id="request-search" name="q" value="{{ filters.q }}"
+           placeholder="{{ t('req.search_placeholder') }}">
+  </div>
+  <div>
+    <label class="label" for="request-status">{{ t("common.status") }}</label>
+    <select class="field" id="request-status" name="status">
+      {% for value, label in [("OPEN", t("req.status_open")), ("", t("common.all")),
+                               ("PENDING", t("req.status_pending")),
+                               ("CROSSMATCHED", t("req.status_crossmatched")),
+                               ("PARTIAL", t("req.status_partial")),
+                               ("ISSUED", t("req.status_issued")),
+                               ("CLOSED", t("req.status_closed")),
+                               ("CANCELLED", t("req.status_cancelled"))] %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="request-urgency">{{ t("req.urgency") }}</label>
+    <select class="field" id="request-urgency" name="urgency">
+      <option value="">{{ t("common.all") }}</option>
+      {% for value in urgencies %}
+        <option value="{{ value }}" {% if filters.urgency == value %}selected{% endif %}>
+          {{ t("req.urgency_" ~ value|lower) }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-end gap-2">
+    <button type="submit" class="btn-primary">{{ t("common.search") }}</button>
+    <a href="/app/requests" class="btn-secondary">{{ t("req.reset") }}</a>
+  </div>
+  </form>
+</details>
+
+{% if requests %}
+  <div class="table-wrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>{{ t("req.request") }} · {{ t("req.patient_episode") }}</th>
+          <th>{{ t("common.component") }} · {{ t("common.blood_group") }}</th>
+          <th>{{ t("req.urgency") }} · {{ t("req.needed_by") }}</th>
+          <th class="text-end">{{ t("req.fulfilment") }} · {{ t("common.status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in requests %}
+          {% set hours_due = item.required_by|hours_until if item.required_by else none %}
+          <tr class="cursor-pointer" onclick="window.location='/app/requests/{{ item.id }}'">
+            <td>
+              <a class="link font-mono text-xs font-semibold" href="/app/requests/{{ item.id }}">
+                {{ item.request_code }}
+              </a>
+              <p class="mt-1 text-xs font-medium text-ink">{{ item.patient_ref }}</p>
+              <p class="mt-0.5 text-2xs text-ink-muted">{{ item.ward or t("req.ward_unrecorded") }} · {{ item.clinical_context|replace("_", " ")|title }}</p>
+            </td>
+            <td>
+              <div class="flex items-center gap-2"><strong class="text-xs">{{ item.component_code }}</strong>{% if item.group_code %}{{ group_chip(item.group_code) }}{% else %}<span class="badge-warn">{{ t("req.group_pending") }}</span>{% endif %}</div>
+            </td>
+            <td>
+              <span class="{% if item.urgency in ['EMERGENCY', 'MASSIVE_TRANSFUSION'] %}badge-critical{% elif item.urgency == 'URGENT' %}badge-warn{% else %}badge-neutral{% endif %}">
+                {{ t("req.urgency_" ~ item.urgency|lower) }}
+              </span>
+              {% if item.required_by %}
+                <span class="num mt-1.5 block text-xs {% if hours_due < 0 %}font-semibold text-critical-600{% elif hours_due < 2 %}font-semibold text-warn-700{% else %}text-ink-muted{% endif %}">
+                  {{ item.required_by|datetime }}
+                </span>
+                {% if hours_due < 0 %}<p class="text-2xs text-critical-600">{{ t("req.overdue") }}</p>{% endif %}
+              {% else %}
+                <span class="text-ink-faint">{{ t("req.not_specified") }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end"><div><span class="num font-semibold">{{ item.units_issued }}</span><span class="num text-ink-muted">/ {{ item.units_requested }}</span></div><div class="mt-1">{{ status_badge(item.status) }}</div></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  {{ empty(t("req.empty_title"), t("req.empty_body"), "check") }}
+{% endif %}
+{% endblock %}

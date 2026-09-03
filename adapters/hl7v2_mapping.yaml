@@ -1,0 +1,43 @@
+# Rabta-e-Hayat HL7 v2 MVP implementation guide.
+# A vendor-specific go-live mapping must be reviewed before enabling a real feed.
+messages:
+  ORM^O01:
+    canonical_type: DEMAND
+    segment: ZRH
+    fields:
+      1: source_system_ref
+      2: requested_at
+      3: component_code
+      4: blood_group
+      5: units_requested
+      6: units_issued
+      7: urgency
+      8: clinical_context
+      9: outcome
+  BPS^O29:
+    canonical_type: INVENTORY
+    segment: ZBU
+  BRP^O30:
+    canonical_type: INVENTORY
+    segment: ZBU
+  BTS^O31:
+    canonical_type: INVENTORY
+    segment: ZBU
+  BRT^O32:
+    canonical_type: INVENTORY
+    segment: ZBU
+
+segments:
+  ZBU:
+    fields:
+      1: source_system_ref
+      2: din
+      3: component_code
+      4: blood_group
+      5: collected_at
+      6: expires_at
+      7: status
+      8: screening_status
+      9: volume_ml
+      10: is_leucodepleted
+      11: is_irradiated

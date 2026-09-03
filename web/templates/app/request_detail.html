@@ -1,0 +1,291 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, status_badge, empty, days_left_cell with context %}
+{% macro modal_close() %}<div class="flex justify-end"><button class="btn-ghost btn-sm" type="button" x-on:click="$el.closest('details').removeAttribute('open')">{{ t("common.close") }}</button></div>{% endmacro %}
+
+{% block toolbar %}
+  {% if permissions.manage and clinical_request.status not in ['CLOSED', 'CANCELLED'] %}
+    <a href="/app/requests/{{ clinical_request.id }}/edit" class="btn-primary">{{ t("req.edit_request") }}</a>
+  {% endif %}
+  <a href="/app/requests" class="btn-secondary">{{ t("req.back_to_queue") }}</a>
+{% endblock %}
+
+{% block content %}
+{% set req = clinical_request %}
+<section class="card card-pad mb-4">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="font-mono text-lg font-semibold text-ink">{{ req.request_code }}</h1>
+        {{ status_badge(req.status) }}
+        <span class="{% if req.urgency in ['EMERGENCY', 'MASSIVE_TRANSFUSION'] %}badge-critical{% elif req.urgency == 'URGENT' %}badge-warn{% else %}badge-neutral{% endif %}">
+          {{ t("req.urgency_" ~ req.urgency|lower) }}
+        </span>
+      </div>
+      <p class="mt-1 text-sm text-ink-secondary">{{ req.patient_ref }} · {{ req.ward or t("req.ward_unrecorded") }}</p>
+    </div>
+    <div class="min-w-56">
+      <div class="mb-1 flex justify-between text-2xs text-ink-muted">
+        <span>{{ t("req.fulfilment") }}</span>
+        <span class="num font-semibold text-ink">{{ req.units_issued }} / {{ req.units_requested }}</span>
+      </div>
+      <div class="h-2 overflow-hidden rounded-full bg-surface-sunken">
+        <div class="h-full rounded-full bg-brand-500" style="width: {{ ([100, (req.units_issued / req.units_requested * 100)]|min)|round(0) }}%"></div>
+      </div>
+    </div>
+  </div>
+
+  <dl class="mt-5 grid gap-x-6 gap-y-4 border-t border-border-subtle pt-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div><dt class="text-2xs text-ink-muted">{{ t("common.component") }}</dt><dd class="mt-1 text-sm font-semibold">{{ component.code }}</dd></div>
+    <div><dt class="text-2xs text-ink-muted">{{ t("req.patient_group") }}</dt><dd class="mt-1">{% if patient_group %}{{ group_chip(patient_group.code) }}{% else %}<span class="badge-warn">{{ t("req.group_pending") }}</span>{% endif %}</dd></div>
+    <div><dt class="text-2xs text-ink-muted">{{ t("req.clinical_context") }}</dt><dd class="mt-1 text-sm">{{ t("req.context_" ~ req.clinical_context|lower) }}</dd></div>
+    <div><dt class="text-2xs text-ink-muted">{{ t("req.needed_by") }}</dt><dd class="num mt-1 text-sm">{{ req.required_by|datetime if req.required_by else t("req.not_specified") }}</dd></div>
+    <div><dt class="text-2xs text-ink-muted">{{ t("req.requested_by") }}</dt><dd class="mt-1 text-sm">{{ req.requested_by or t("req.not_specified") }}</dd></div>
+  </dl>
+</section>
+
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,.8fr)]">
+  <div class="space-y-4">
+    <section class="card card-pad">
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold text-ink">{{ t("req.compatible_stock") }}</h2>
+          <p class="mt-1 text-2xs text-ink-muted">{{ t("req.compatible_stock_help") }}</p>
+        </div>
+        <span class="badge-neutral">{{ candidates|length }} {{ t("req.top_fefo_candidates") }}</span>
+      </div>
+
+      {% if not patient_group and not candidates %}
+        <div class="rounded-lg border border-warn-200 bg-warn-50 p-4 text-sm text-warn-800">{{ t("req.group_needed_for_crossmatch") }}</div>
+      {% elif candidates %}
+        {% if not patient_group %}
+          <div class="mb-3 rounded-lg border border-critical-200 bg-critical-50 p-3 text-xs text-critical-800">{{ t("req.emergency_unknown_group_notice") }}</div>
+        {% endif %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>DIN</th><th>{{ t("common.blood_group") }}</th><th>{{ t("common.expires") }}</th><th>{{ t("req.match_preference") }}</th><th></th></tr></thead>
+            <tbody>
+              {% for unit in candidates %}
+                <tr>
+                  <td class="font-mono text-xs font-semibold">{{ unit.din }}</td>
+                  <td>{{ group_chip(unit.donor_group_code) }}</td>
+                  <td>{{ days_left_cell(unit.expires_at) }}</td>
+                  <td>
+                    {% if not patient_group %}<span class="badge-warn">{{ t("req.emergency_policy_stock") }}</span>
+                    {% elif unit.preference_rank == 1 %}<span class="badge-safe">{{ t("req.identical") }}</span>
+                    {% elif unit.requires_override %}<span class="badge-warn">{{ t("req.override_required") }}</span>
+                    {% else %}<span class="badge-info">{{ t("req.compatible_substitute") }}</span>{% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if permissions.crossmatch and patient_group %}
+                      <details class="action-modal relative inline-block text-start">
+                        <summary class="btn-secondary btn-sm cursor-pointer list-none whitespace-nowrap">{{ t("req.crossmatch_action") }}</summary>
+                        <form method="post" action="/app/requests/{{ req.id }}/crossmatch"
+                              class="action-modal-panel">
+                          {{ modal_close() }}
+                          <input type="hidden" name="unit_id" value="{{ unit.id }}">
+                          <div><label class="label">{{ t("req.crossmatch_result") }}</label><select class="field" name="result"><option value="COMPATIBLE">{{ t("req.result_compatible") }}</option><option value="INCOMPATIBLE">{{ t("req.result_incompatible") }}</option></select></div>
+                          <div><label class="label">{{ t("req.crossmatch_method") }}</label><select class="field" name="method">{% for method in crossmatch_methods %}<option value="{{ method }}">{{ method|replace("_", " ")|title }}</option>{% endfor %}</select></div>
+                          {% if unit.requires_override %}<div><label class="label">{{ t("req.override_reason") }} *</label><textarea class="field" name="override_reason" required minlength="12"></textarea></div>{% else %}<input type="hidden" name="override_reason" value="">{% endif %}
+                          <div><label class="label">{{ t("req.lab_notes") }}</label><textarea class="field" name="notes"></textarea></div>
+                          <button class="btn-primary w-full" type="submit">{{ t("req.save_crossmatch") }}</button>
+                        </form>
+                      </details>
+                    {% endif %}
+                    {% if permissions.issue and unit.id in emergency_candidate_ids %}
+                      <details class="action-modal relative ms-2 inline-block text-start">
+                        <summary class="btn-danger cursor-pointer list-none">{{ t("req.emergency_issue") }}</summary>
+                        <form method="post" action="/app/requests/{{ req.id }}/emergency-issue/{{ unit.id }}"
+                              class="action-modal-panel border-critical-200">
+                          {{ modal_close() }}
+                          <div class="rounded-md bg-critical-50 p-3 text-2xs text-critical-800">{{ t("req.emergency_issue_warning") }}</div>
+                          <div><label class="label">{{ t("req.patient_ref_confirm") }} *</label><input class="field" name="patient_ref_confirmation" required autocomplete="off" placeholder="{{ req.patient_ref }}"></div>
+                          <div><label class="label">{{ t("req.collected_by") }} *</label><input class="field" name="collected_by" required minlength="3"></div>
+                          <div><label class="label">{{ t("req.destination_ward") }}</label><input class="field" name="destination_ward" value="{{ req.ward or '' }}"></div>
+                          <div><label class="label">{{ t("req.emergency_authorized_by") }} *</label><input class="field" name="authorized_by" required minlength="3"></div>
+                          <div><label class="label">{{ t("req.emergency_reason") }} *</label><textarea class="field" name="emergency_reason" required minlength="12"></textarea></div>
+                          <label class="flex items-start gap-2 text-xs"><input class="mt-0.5" type="checkbox" name="acknowledge_uncrossmatched" value="yes" required><span>{{ t("req.emergency_acknowledgement") }}</span></label>
+                          <button class="btn-danger w-full" type="submit">{{ t("req.confirm_emergency_issue") }}</button>
+                        </form>
+                      </details>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        {{ empty(t("req.no_compatible_stock"), t("req.no_compatible_stock_help")) }}
+      {% endif %}
+    </section>
+
+    <section class="card card-pad">
+      <div class="mb-3">
+        <h2 class="text-sm font-semibold text-ink">{{ t("req.crossmatch_history") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("req.crossmatch_history_help") }}</p>
+      </div>
+      {% if crossmatches %}
+        <div class="space-y-3">
+          {% for item in crossmatches %}
+            {% set xm = item.record %}
+            <div class="rounded-lg border border-border-subtle p-3">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="flex items-center gap-2"><span class="font-mono text-xs font-semibold">{{ item.din }}</span>{{ group_chip(item.donor_group_code) }}<span class="{% if xm.result == 'COMPATIBLE' %}badge-safe{% elif xm.result == 'INCOMPATIBLE' %}badge-critical{% else %}badge-neutral{% endif %}">{{ t("req.result_" ~ xm.result|lower) }}</span></div>
+                  <p class="mt-1 text-2xs text-ink-muted">{{ xm.method|replace("_", " ")|title }} · {{ xm.performed_at|datetime }} · {{ xm.performed_by }}</p>
+                  {% if xm.valid_until %}<p class="mt-1 text-2xs text-ink-secondary">{{ t("req.valid_until") }} <span class="num">{{ xm.valid_until|datetime }}</span></p>{% endif %}
+                </div>
+                {% if xm.result == 'COMPATIBLE' and item.unit_status == 'CROSSMATCHED' %}
+                  <div class="flex flex-wrap gap-2">
+                    {% if permissions.issue %}
+                      <details class="action-modal relative">
+                        <summary class="btn-primary cursor-pointer list-none">{{ t("req.issue_unit") }}</summary>
+                        <form method="post" action="/app/requests/{{ req.id }}/issue/{{ xm.blood_unit_id }}" class="action-modal-panel">
+                          {{ modal_close() }}
+                          <div><label class="label">{{ t("req.patient_ref_confirm") }} *</label><input class="field" name="patient_ref_confirmation" required autocomplete="off" placeholder="{{ req.patient_ref }}"></div>
+                          <div><label class="label">{{ t("req.collected_by") }} *</label><input class="field" name="collected_by" required minlength="3"></div>
+                          <div><label class="label">{{ t("req.destination_ward") }}</label><input class="field" name="destination_ward" value="{{ req.ward or '' }}"></div>
+                          <button class="btn-primary w-full" type="submit">{{ t("req.confirm_issue") }}</button>
+                        </form>
+                      </details>
+                    {% endif %}
+                    {% if permissions.crossmatch %}
+                      <details class="action-modal relative">
+                        <summary class="btn-secondary cursor-pointer list-none">{{ t("req.release") }}</summary>
+                        <form method="post" action="/app/requests/{{ req.id }}/crossmatch/{{ xm.blood_unit_id }}/release" class="action-modal-panel">
+                          {{ modal_close() }}
+                          <div><label class="label">{{ t("common.reason") }} *</label><textarea class="field" name="reason" required minlength="12"></textarea></div>
+                          <button class="btn-secondary w-full" type="submit">{{ t("req.confirm_release") }}</button>
+                        </form>
+                      </details>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty(t("req.no_crossmatches"), t("req.no_crossmatches_help")) }}
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="space-y-4">
+    <section class="card card-pad">
+      <div class="mb-3">
+        <h2 class="text-sm font-semibold text-ink">{{ t("req.issue_outcomes") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("req.issue_outcomes_help") }}</p>
+      </div>
+      {% if issues %}
+        <div class="space-y-3">
+          {% for item in issues %}
+            {% set issue = item.record %}
+            <article class="rounded-lg border border-border-subtle p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div><p class="font-mono text-xs font-semibold">{{ item.din }}</p><p class="mt-1 text-2xs text-ink-muted">{{ issue.issued_at|datetime }} · {{ issue.destination_ward or req.ward or '—' }}</p>{% if issue.release_mode == 'EMERGENCY_UNCROSSMATCHED' %}<span class="mt-1 inline-flex badge-critical">{{ t("req.emergency_release_badge") }}</span>{% endif %}</div>
+                {% if item.transfusion %}<span class="badge-safe">{{ t("req.transfused") }}</span>{% elif issue.disposition == 'NOT_RETURNED' %}<span class="badge-critical">{{ t("req.not_returned") }}</span>{% elif issue.returned_at and issue.return_accepted %}<span class="badge-info">{{ t("req.return_accepted") }}</span>{% elif issue.returned_at %}<span class="badge-critical">{{ t("req.return_rejected") }}</span>{% else %}<span class="badge-warn">{{ t("req.awaiting_outcome") }}</span>{% endif %}
+              </div>
+              {% if item.transfusion %}
+                <div class="mt-3 border-t border-border-subtle pt-3 text-xs"><p>{{ t("req.outcome") }}: <strong>{{ item.transfusion.outcome|title }}</strong></p>{% if item.transfusion.reaction_type != 'NONE' %}<p class="mt-1 text-critical-700">{{ t("req.reaction") }}: {{ item.transfusion.reaction_type|replace("_", " ")|title }} · {{ item.transfusion.reaction_severity|replace("_", " ")|title }}</p><p class="mt-1 text-ink-secondary">{{ item.transfusion.reaction_notes }}</p>{% endif %}</div>
+              {% elif issue.returned_at %}
+                <div class="mt-3 border-t border-border-subtle pt-3 text-xs"><p>{{ issue.return_reason }} · <span class="num">{{ issue.minutes_out_of_storage }} {{ t("common.minutes") }}</span></p></div>
+              {% elif issue.disposition == 'NOT_RETURNED' %}
+                <div class="mt-3 border-t border-border-subtle pt-3 text-xs text-critical-800"><p>{{ issue.custody_notes }}</p></div>
+              {% else %}
+                <div class="mt-3 flex flex-wrap gap-2 border-t border-border-subtle pt-3">
+                  {% if permissions.transfusion %}
+                    <details class="action-modal relative">
+                      <summary class="btn-primary cursor-pointer list-none">{{ t("req.record_outcome") }}</summary>
+                      <form method="post" action="/app/requests/{{ req.id }}/transfusion/{{ issue.id }}" class="action-modal-panel">
+                        {{ modal_close() }}
+                        <div><label class="label">{{ t("req.outcome") }}</label><select class="field" name="outcome">{% for value in transfusion_outcomes %}<option value="{{ value }}">{{ t("req.outcome_" ~ value|lower) }}</option>{% endfor %}</select></div>
+                        <div><label class="label">{{ t("req.reaction") }}</label><select class="field" name="reaction_type">{% for value in reaction_types %}<option value="{{ value }}">{{ t("req.reaction_" ~ value|lower) }}</option>{% endfor %}</select></div>
+                        <div><label class="label">{{ t("req.reaction_severity") }}</label><select class="field" name="reaction_severity"><option value="">{{ t("common.none") }}</option>{% for value in reaction_severities %}<option value="{{ value }}">{{ t("req.severity_" ~ value|lower) }}</option>{% endfor %}</select></div>
+                        <div><label class="label">{{ t("req.reaction_notes") }}</label><textarea class="field" name="reaction_notes"></textarea></div>
+                        <button class="btn-primary w-full" type="submit">{{ t("req.save_outcome") }}</button>
+                      </form>
+                    </details>
+                  {% endif %}
+                  {% if permissions.issue %}
+                    <details class="action-modal relative">
+                      <summary class="btn-secondary cursor-pointer list-none">{{ t("req.record_return") }}</summary>
+                      <form method="post" action="/app/requests/{{ req.id }}/return/{{ issue.id }}" class="action-modal-panel">
+                        {{ modal_close() }}
+                        <div><label class="label">{{ t("req.minutes_out") }} *</label><input class="field num" type="number" min="0" max="1440" name="minutes_out_of_storage" required></div>
+                        <label class="flex items-start gap-2 text-xs"><input class="mt-0.5" type="checkbox" name="cold_chain_intact" value="yes"><span>{{ t("req.cold_chain_confirm") }}</span></label>
+                        <div><label class="label">{{ t("common.reason") }} *</label><textarea class="field" name="reason" required></textarea></div>
+                        <button class="btn-secondary w-full" type="submit">{{ t("req.save_return") }}</button>
+                      </form>
+                    </details>
+                    <details class="action-modal relative">
+                      <summary class="btn-danger-soft cursor-pointer list-none">{{ t("req.record_not_returned") }}</summary>
+                      <form method="post" action="/app/requests/{{ req.id }}/not-returned/{{ issue.id }}" class="action-modal-panel border-critical-200">
+                        {{ modal_close() }}
+                        <div class="rounded-md bg-critical-50 p-3 text-2xs text-critical-800">{{ t("req.not_returned_warning") }}</div>
+                        <div><label class="label">{{ t("req.incident_reference") }} *</label><input class="field" name="incident_reference" required minlength="3" maxlength="120"></div>
+                        <div><label class="label">{{ t("common.reason") }} *</label><textarea class="field" name="reason" required minlength="12"></textarea></div>
+                        <button class="btn-danger w-full" type="submit">{{ t("req.confirm_not_returned") }}</button>
+                      </form>
+                    </details>
+                  {% endif %}
+                </div>
+              {% endif %}
+              {% if issue.release_mode == 'EMERGENCY_UNCROSSMATCHED' %}<div class="mt-3 rounded-md bg-critical-50 p-2 text-2xs text-critical-800"><strong>{{ issue.emergency_authorized_by }}</strong> · {{ issue.emergency_release_reason }}</div>{% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty(t("req.no_issues"), t("req.emergency_no_issues_help") if emergency_candidate_ids else t("req.no_issues_help")) }}
+      {% endif %}
+    </section>
+
+    <section class="card card-pad">
+      <div class="mb-3"><h2 class="text-sm font-semibold text-ink">{{ t("req.action_timeline") }}</h2><p class="mt-1 text-2xs text-ink-muted">{{ t("req.action_timeline_help") }}</p></div>
+      {% if timeline %}
+        <ol class="space-y-0">
+          {% for event in timeline %}
+            <li class="relative border-s border-border-subtle pb-4 ps-5 last:border-transparent last:pb-0">
+              <span class="absolute -start-1.5 top-1 h-3 w-3 rounded-full border-2 border-surface bg-brand-500"></span>
+              <p class="text-xs font-semibold text-ink">{{ t("req.event_" ~ event.action|lower) }}</p>
+              <p class="mt-0.5 text-2xs text-ink-muted"><span class="num">{{ event.created_at|datetime }}</span> · {{ event.actor }}</p>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        {{ empty(t("req.no_timeline"), t("req.no_timeline_help")) }}
+      {% endif %}
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="text-sm font-semibold text-ink">{{ t("req.request_details") }}</h2>
+      <dl class="mt-3 space-y-2 text-xs">
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("req.created_at") }}</dt><dd class="num text-end">{{ req.requested_at|datetime }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("req.consultant") }}</dt><dd class="text-end">{{ req.consultant or '—' }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("req.replacement_required") }}</dt><dd class="num text-end">{{ req.replacement_units_required }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("req.replacement_received") }}</dt><dd class="num text-end">{{ req.replacement_units_received }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("req.replacement_status") }}</dt><dd class="text-end">{% if req.replacement_waived %}<span class="badge-info">{{ t("req.replacement_waived") }}</span>{% elif req.replacement_units_received >= req.replacement_units_required %}<span class="badge-safe">{{ t("req.replacement_complete") }}</span>{% else %}<span class="badge-warn">{{ t("req.replacement_outstanding") }}</span>{% endif %}</dd></div>
+      </dl>
+      {% if req.replacement_waived and req.replacement_waived_reason %}<div class="mt-3 rounded-lg bg-info-50 p-3 text-xs text-info-800">{{ req.replacement_waived_reason }}</div>{% endif %}
+      {% if permissions.manage and not req.replacement_waived and req.replacement_units_received < req.replacement_units_required and req.status != 'CANCELLED' %}
+        <div class="mt-3 grid gap-3 border-t border-border-subtle pt-3 sm:grid-cols-2">
+          <form method="post" action="/app/requests/{{ req.id }}/replacement/receipt" class="space-y-2"><input class="field num" type="number" name="units_received" min="1" max="{{ req.replacement_units_required - req.replacement_units_received }}" required placeholder="{{ t('req.replacement_units') }}"><input class="field" name="source_reference" required minlength="3" maxlength="120" placeholder="{{ t('req.replacement_source_ref') }}"><button class="btn-primary w-full" type="submit">{{ t("req.record_replacement") }}</button></form>
+          <form method="post" action="/app/requests/{{ req.id }}/replacement/waive" class="space-y-2"><textarea class="field" name="reason" required minlength="12" maxlength="120" placeholder="{{ t('req.replacement_waiver_reason') }}"></textarea><button class="btn-secondary w-full" type="submit">{{ t("req.waive_replacement") }}</button></form>
+        </div>
+      {% endif %}
+      {% if req.notes %}<div class="mt-3 rounded-lg bg-surface-sunken p-3 text-xs text-ink-secondary whitespace-pre-line">{{ req.notes }}</div>{% endif %}
+    </section>
+
+    {% if permissions.manage and req.status not in ['CLOSED', 'CANCELLED'] %}
+      <section class="card card-pad">
+        <h2 class="text-sm font-semibold text-ink">{{ t("req.finalise_request") }}</h2>
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("req.finalise_help") }}</p>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <form method="post" action="/app/requests/{{ req.id }}/close" class="space-y-2"><textarea class="field" name="reason" placeholder="{{ t('req.partial_close_reason') }}"></textarea><button class="btn-secondary w-full" type="submit">{{ t("req.close_request") }}</button></form>
+          <form method="post" action="/app/requests/{{ req.id }}/cancel" class="space-y-2"><textarea class="field" name="reason" required minlength="12" placeholder="{{ t('req.cancel_reason') }}"></textarea><button class="btn-danger w-full" type="submit">{{ t("req.cancel_request") }}</button></form>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "layout/base.html" %}
+
+{% block toolbar %}
+  <a href="{{ cancel_url }}" class="btn-secondary">{{ t("req.back_to_queue") }}</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ form_action }}" class="mx-auto max-w-5xl space-y-4">
+  {% if form_error %}
+    <div class="rounded-lg border border-critical-200 bg-critical-50 px-4 py-3 text-sm text-critical-800" role="alert">
+      <p class="font-semibold">{{ t("req.could_not_save") }}</p>
+      <p class="mt-1">{{ form_error.message }}</p>
+    </div>
+  {% endif %}
+
+  <section class="card card-pad">
+    <div class="mb-4 border-b border-border-subtle pb-3">
+      <h2 class="text-sm font-semibold text-ink">{{ t("req.patient_section") }}</h2>
+      <p class="mt-1 text-2xs text-ink-muted">{{ t("req.patient_privacy_note") }}</p>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div class="lg:col-span-2">
+        <label class="label" for="patient-ref">{{ t("req.patient_episode") }} *</label>
+        <input class="field" id="patient-ref" name="patient_ref" required maxlength="60"
+               autocomplete="off" value="{{ form.patient_ref or '' }}"
+               placeholder="{{ t('req.patient_ref_placeholder') }}">
+        <p class="mt-1 text-2xs text-ink-muted">{{ t("req.patient_ref_help") }}</p>
+      </div>
+      <div>
+        <label class="label" for="patient-age">{{ t("req.patient_age") }}</label>
+        <input class="field num" id="patient-age" name="patient_age_years" type="number"
+               min="0" max="130" value="{{ form.patient_age_years or '' }}">
+      </div>
+      <div>
+        <label class="label" for="patient-sex">{{ t("req.patient_sex") }}</label>
+        <select class="field" id="patient-sex" name="patient_sex">
+          {% for value in patient_sexes %}
+            <option value="{{ value }}" {% if (form.patient_sex or 'UNKNOWN') == value %}selected{% endif %}>
+              {{ t("req.sex_" ~ value|lower) }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="patient-group">{{ t("req.patient_group") }}</label>
+        <select class="field" id="patient-group" name="patient_blood_group_id">
+          <option value="">{{ t("req.group_unknown") }}</option>
+          {% for id, code in groups %}
+            <option value="{{ id }}" {% if form.patient_blood_group_id|string == id|string %}selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="ward">{{ t("req.ward") }}</label>
+        <input class="field" id="ward" name="ward" maxlength="120" value="{{ form.ward or '' }}">
+      </div>
+      <div>
+        <label class="label" for="requested-by">{{ t("req.requested_by") }}</label>
+        <input class="field" id="requested-by" name="requested_by" maxlength="160" value="{{ form.requested_by or '' }}">
+      </div>
+      <div>
+        <label class="label" for="consultant">{{ t("req.consultant") }}</label>
+        <input class="field" id="consultant" name="consultant" maxlength="160" value="{{ form.consultant or '' }}">
+      </div>
+    </div>
+  </section>
+
+  <section class="card card-pad">
+    <div class="mb-4 border-b border-border-subtle pb-3">
+      <h2 class="text-sm font-semibold text-ink">{{ t("req.requirement_section") }}</h2>
+      <p class="mt-1 text-2xs text-ink-muted">{{ t("req.requirement_note") }}</p>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div class="lg:col-span-2">
+        <label class="label" for="component">{{ t("common.component") }} *</label>
+        <select class="field" id="component" name="component_id" required>
+          {% for id, code, name in components %}
+            <option value="{{ id }}" {% if form.component_id|string == id|string %}selected{% endif %}>{{ code }} — {{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="units">{{ t("req.units_requested") }} *</label>
+        <input class="field num" id="units" name="units_requested" type="number" min="1" max="20"
+               required value="{{ form.units_requested or 1 }}">
+      </div>
+      <div>
+        <label class="label" for="urgency">{{ t("req.urgency") }} *</label>
+        <select class="field" id="urgency" name="urgency" required>
+          {% for value in urgencies %}
+            <option value="{{ value }}" {% if (form.urgency or 'ROUTINE') == value %}selected{% endif %}>
+              {{ t("req.urgency_" ~ value|lower) }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="context">{{ t("req.clinical_context") }}</label>
+        <select class="field" id="context" name="clinical_context">
+          {% for value in clinical_contexts %}
+            <option value="{{ value }}" {% if (form.clinical_context or 'OTHER') == value %}selected{% endif %}>
+              {{ t("req.context_" ~ value|lower) }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="required-by">{{ t("req.needed_by") }}</label>
+        <input class="field num" id="required-by" name="required_by" type="datetime-local" value="{{ form.required_by or '' }}">
+      </div>
+      <div>
+        <label class="label" for="replacement">{{ t("req.replacement_required") }}</label>
+        <input class="field num" id="replacement" name="replacement_units_required" type="number"
+               min="0" max="20" value="{{ form.replacement_units_required or 0 }}">
+      </div>
+      <div class="md:col-span-2 lg:col-span-4">
+        <label class="label" for="notes">{{ t("req.clinical_notes") }}</label>
+        <textarea class="field min-h-24" id="notes" name="notes" maxlength="2000">{{ form.notes or '' }}</textarea>
+      </div>
+    </div>
+  </section>
+
+  <div class="flex items-center justify-end gap-2">
+    <a href="{{ cancel_url }}" class="btn-secondary">{{ t("common.cancel") }}</a>
+    <button type="submit" class="btn-primary">{{ t(submit_key) }}</button>
+  </div>
+</form>
+{% endblock %}

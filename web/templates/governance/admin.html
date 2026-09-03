@@ -1,0 +1,105 @@
+{% extends "layout/base.html" %}
+{% from "layout/icons.html" import icon %}
+
+{% block content %}
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,.8fr)]">
+  <div class="order-2 space-y-4 xl:order-1">
+    <section id="users" class="card scroll-mt-28">
+      <div class="card-head"><div><h2 class="card-title">{{ t("governance.users_roles") }}</h2><p class="card-hint">{{ t("governance.users_roles_help") }}</p></div><span class="badge-neutral num">{{ users|length }}</span></div>
+      <div class="divide-y divide-line">
+      {% for row in users %}
+        {% set user = row.UserAccount %}
+        <div class="px-4 py-4 sm:px-5">
+          <form method="post" action="/admin/users/{{ user.id }}" class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(13rem,1.2fr)_minmax(10rem,.8fr)_minmax(11rem,.9fr)] 2xl:items-end">
+            <div class="min-w-0 sm:col-span-2 2xl:col-span-1"><div class="flex flex-wrap items-center gap-2"><p class="text-sm font-semibold text-ink">{{ user.full_name }}</p>{% if user.must_change_password %}<span class="badge-warn">{{ t("governance.password_change_due") }}</span>{% endif %}</div><p class="truncate text-2xs text-ink-muted" title="{{ user.email }} · {{ row.organization_name }}">{{ user.email }} · {{ row.organization_name }}</p></div>
+            <div><label class="label">{{ t("governance.account_role") }}</label><select class="field text-xs" name="role" {% if not can_manage_users %}disabled{% endif %}>{% for option in roles %}<option value="{{ option.value }}" {% if user.role == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
+            <div><label class="label">{{ t("common.facility") }}</label><select class="field text-xs" name="facility_id" {% if not can_manage_users %}disabled{% endif %}><option value="">{{ t("governance.organization_wide") }}</option>{% for facility in user_facilities if facility.organization_id == user.organization_id %}<option value="{{ facility.id }}" {% if user.facility_id == facility.id %}selected{% endif %}>{{ facility.name_en }}</option>{% endfor %}</select></div>
+            <div class="flex flex-wrap items-center justify-end gap-2 sm:col-span-2 2xl:col-span-3"><label class="flex min-h-10 items-center gap-2 rounded-lg border border-line px-3 text-xs"><input type="checkbox" name="is_active" value="yes" {% if user.is_active %}checked{% endif %} {% if not can_manage_users %}disabled{% endif %}><span>{{ t("common.active") }}</span></label><button class="btn-secondary btn-sm" type="submit" {% if not can_manage_users %}disabled{% endif %}>{{ t("common.save") }}</button></div>
+          </form>
+          {% if can_manage_users %}<details class="mt-2"><summary class="cursor-pointer text-2xs font-semibold text-brand-700">{{ t("governance.reset_access") }}</summary><form method="post" action="/admin/users/{{ user.id }}/reset-password" class="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-surface-subtle p-3 sm:flex-row sm:items-end"><div class="min-w-0 flex-1"><label class="label">{{ t("governance.new_temporary_password") }}</label><input class="field" type="password" name="temporary_password" minlength="12" required autocomplete="new-password"><p class="field-help">{{ t("governance.reset_access_help") }}</p></div><button class="btn-secondary btn-sm" type="submit">{{ t("governance.reset_and_sign_out") }}</button></form></details>{% endif %}
+        </div>
+      {% endfor %}
+      </div>
+    </section>
+
+    {% if can_manage_users %}
+    <section id="new-user" class="card scroll-mt-28">
+      <div class="card-head"><div><h2 class="card-title">{{ t("governance.create_user") }}</h2><p class="card-hint">{{ t("governance.create_user_help") }}</p></div><span class="badge-safe">{{ t("governance.audited") }}</span></div>
+      <form method="post" action="/admin/users" class="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3" x-data="{ organization: '{{ organizations[0].id if organizations else '' }}', facility: '' }">
+        <div><label class="label">{{ t("governance.full_name") }}</label><input class="field" name="full_name" required></div>
+        <div><label class="label">{{ t("common.email") }}</label><input class="field" type="email" name="email" required></div>
+        <div><label class="label">{{ t("governance.job_title") }}</label><input class="field" name="job_title"></div>
+        <div><label class="label">{{ t("governance.organization") }}</label><select class="field" name="organization_id" x-model="organization" @change="facility = ''" required>{% for organization in organizations %}<option value="{{ organization.id }}">{{ organization.name_en }}</option>{% endfor %}</select></div>
+        <div><label class="label">{{ t("common.facility") }}</label><select class="field" name="facility_id" x-model="facility"><option value="">{{ t("governance.organization_wide") }}</option>{% for facility in user_facilities %}<option value="{{ facility.id }}" x-show="organization === '{{ facility.organization_id }}'">{{ facility.name_en }} · {{ facility.code }}</option>{% endfor %}</select><p class="field-help">{{ t("governance.facility_scope_help") }}</p></div>
+        <div><label class="label">{{ t("topbar.role") }}</label><select class="field" name="role" required>{% for option in roles %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}</select></div>
+        <div class="sm:col-span-2 lg:col-span-3"><label class="label">{{ t("governance.temporary_password") }}</label><input class="field" type="password" name="temporary_password" minlength="12" required autocomplete="new-password"><p class="field-help">{{ t("auth.password_requirements") }}</p></div>
+        <button class="btn-primary sm:col-span-2 lg:col-span-3" type="submit">{{ icon("plus", "h-4 w-4") }} {{ t("governance.create_user") }}</button>
+      </form>
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <div class="card-head"><div><h2 class="card-title">{{ t("governance.audit_explorer") }}</h2><p class="card-hint">{{ t("governance.audit_explorer_help") }}</p></div><span class="badge-neutral num">{{ audits|length }}</span></div>
+      <div class="max-h-[36rem] divide-y divide-line overflow-y-auto">
+      {% for event in audits %}<div class="px-4 py-3 sm:px-5"><div class="flex flex-wrap items-start justify-between gap-2"><div><p class="text-xs font-semibold text-ink">{{ event.action|replace('.',' ')|title }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ event.entity_type }}{% if event.entity_id %} · <span class="font-mono">{{ event.entity_id[:12] }}</span>{% endif %}</p></div><time class="num text-2xs text-ink-muted">{{ event.created_at|datetime }}</time></div><p class="mt-1 text-2xs text-ink-secondary">{{ event.actor }}</p></div>{% else %}<div class="empty"><p class="empty-title">{{ t("governance.no_audit") }}</p></div>{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <aside class="order-1 space-y-4 xl:order-2">
+    <section class="card overflow-hidden">
+      <div class="bg-gradient-to-br from-ink via-brand-900 to-info-700 p-5 text-white"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">{{ icon("sparkles", "h-4 w-4") }}</span><h2 class="mt-3 text-sm font-bold text-white">{{ t("ai.admin_title") }}</h2><p class="mt-1 text-xs leading-relaxed text-white/75">{{ t("ai.admin_card_help") }}</p></div>
+      <div class="p-4"><a class="btn-primary w-full" href="/admin/ai">{{ t("ai.open_control") }}</a></div>
+    </section>
+    {% if can_manage_network %}
+    <section class="card overflow-hidden">
+      <div class="bg-gradient-to-br from-ink via-brand-900 to-brand-700 p-5 text-white"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">{{ icon("check", "h-4 w-4") }}</span><h2 class="mt-3 text-sm font-bold text-white">{{ t("release.title") }}</h2><p class="mt-1 text-xs leading-relaxed text-white/75">{{ t("release.admin_help") }}</p></div>
+      <div class="p-4"><a class="btn-primary w-full" href="/admin/release">{{ t("release.open_workspace") }}</a></div>
+    </section>
+    <section class="card overflow-hidden">
+      <div class="bg-gradient-to-br from-brand-700 to-info-700 p-5 text-white"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">{{ icon("building", "h-4 w-4") }}</span><h2 class="mt-3 text-sm font-bold text-white">{{ t("governance.onboarding_title") }}</h2><p class="mt-1 text-xs leading-relaxed text-white/75">{{ t("governance.admin_onboarding_help") }}</p></div>
+      <div class="grid grid-cols-2 gap-2 p-4"><a class="btn-primary" href="/admin/onboarding/new">{{ t("governance.start_onboarding") }}</a><a class="btn-secondary" href="/admin/onboarding">{{ t("governance.view_drafts") }}</a></div>
+    </section>
+    {% endif %}
+    <section id="intelligence-refresh" class="card card-pad scroll-mt-28">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="card-title">{{ t("governance.intelligence_refresh") }}</h2>
+          <p class="card-hint">{{ t("governance.intelligence_refresh_help") }}</p>
+        </div>
+        {% if intelligence_refresh.status == "CLEAN" %}
+          <span class="badge-safe">{{ t("governance.refresh_clean") }}</span>
+        {% elif intelligence_refresh.status == "FAILED" %}
+          <span class="badge-critical">{{ t("governance.refresh_failed") }}</span>
+        {% else %}
+          <span class="badge-warn">{{ t("governance.refresh_pending") }}</span>
+        {% endif %}
+      </div>
+      <dl class="mt-4 space-y-2 text-xs">
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("governance.refresh_version") }}</dt><dd class="num font-semibold text-ink">{{ intelligence_refresh.completed_version }} / {{ intelligence_refresh.source_version }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("governance.refresh_completed") }}</dt><dd class="num text-end text-ink">{{ intelligence_refresh.completed_at|datetime }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("governance.refresh_duration") }}</dt><dd class="num text-ink">{{ intelligence_refresh.duration_ms|num }} ms</dd></div>
+      </dl>
+      {% if intelligence_refresh.last_error %}<p class="mt-3 rounded-lg bg-critical-50 px-3 py-2 text-xs text-critical-700">{{ t("governance.refresh_error_detail", error_type=intelligence_refresh.last_error) }}</p>{% endif %}
+      <form method="post" action="/admin/refresh-intelligence" class="mt-4">
+        <button class="btn-secondary w-full" type="submit" {% if not can_refresh_intelligence or intelligence_refresh.status == "RUNNING" %}disabled{% endif %}>{{ t("governance.refresh_now") }}</button>
+      </form>
+    </section>
+
+    <section id="optimizer" class="card card-pad scroll-mt-28">
+      <div class="flex items-start justify-between gap-3"><div><h2 class="card-title">{{ t("governance.optimizer_policy") }}</h2><p class="card-hint">{{ t("governance.optimizer_policy_help") }}</p></div><span class="badge-warn">{{ t("governance.audited") }}</span></div>
+      <form method="post" action="/admin/optimizer-weights" class="mt-4 grid gap-3 sm:grid-cols-2">
+        {% for key in ['shortage','waste','transport','fixed_dispatch','substitution','capacity'] %}<div><label class="label">{{ t("governance.weight_" ~ key) }}</label><input class="field num" type="number" step="0.1" min="0" max="100000" name="{{ key }}" value="{{ weights[key] }}" required {% if not can_change_weights %}disabled{% endif %}></div>{% endfor %}
+        <button class="btn-primary sm:col-span-2" type="submit" {% if not can_change_weights %}disabled{% endif %}>{{ t("governance.save_weights") }}</button>
+      </form>
+      <p class="mt-3 text-2xs leading-relaxed text-ink-muted">{{ t("governance.weight_safety") }}</p>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("governance.manual_optimizer") }}</h2><p class="card-hint">{{ t("governance.manual_optimizer_help") }}</p>
+      <form method="post" action="/admin/run-optimizer" class="mt-4"><button class="btn-primary w-full" type="submit" {% if not can_run_optimizer %}disabled{% endif %}>{{ t("governance.run_optimizer") }}</button></form>
+      <p class="mt-3 text-2xs leading-relaxed text-ink-muted">{{ t("governance.human_gate") }}</p>
+    </section>
+  </aside>
+</div>
+{% endblock %}

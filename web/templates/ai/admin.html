@@ -1,0 +1,36 @@
+{% extends "layout/base.html" %}
+{% from "layout/icons.html" import icon %}
+{% from "layout/components.html" import kpi with context %}
+{% from "ai/_components.html" import result_content with context %}
+
+{% block content %}
+<section class="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+  <div class="grid gap-5 bg-gradient-to-br from-ink via-brand-900 to-info-800 p-5 text-white sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+    <div><span class="badge-info">{{ t("ai.governed_qwen") }}</span><h2 class="mt-3 text-2xl font-bold text-white">{{ t("ai.admin_hero") }}</h2><p class="mt-2 max-w-3xl text-sm leading-relaxed text-white/75">{{ t("ai.admin_body") }}</p></div>
+    <div class="flex flex-col items-start gap-2 lg:items-end"><span class="badge-{{ 'safe' if runtime.configured and not runtime.circuit_open else 'warn' }} badge-dot">{{ t("ai.qwen_ready") if runtime.configured and not runtime.circuit_open else t("ai.offline_ready") }}</span><span class="text-xs text-white/70">{{ runtime.endpoint_host }} · {{ runtime.model }}</span><form method="post" action="/admin/ai/test"><button class="btn-secondary btn-sm" type="submit">{{ t("ai.test_connection") }}</button></form></div>
+  </div>
+</section>
+
+<div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ai.verified_calls"), counts.verified|num, tone="safe", foot=t("ai.all_time")) }}
+  {{ kpi(t("ai.fallback_calls"), counts.fallback|num, tone="warn" if counts.fallback else "safe", foot=t("ai.all_time")) }}
+  {{ kpi(t("ai.tokens_today"), budget.total_tokens|num, tone="info", foot=t("ai.of_token_budget", limit=budget.token_limit|num)) }}
+  {{ kpi(t("ai.cost_today"), "$%.4f"|format(budget.estimated_cost_usd), tone="brand", foot=t("ai.of_cost_budget", limit=budget.cost_limit_usd|num)) }}
+</div>
+
+{% if ai_result %}<section class="card card-pad mt-4" aria-live="polite">{{ result_content(ai_result) }}</section>{% endif %}
+
+<div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.65fr)]">
+  <section class="card overflow-hidden">
+    <div class="card-head"><div><h2 class="card-title">{{ t("ai.audit_title") }}</h2><p class="card-hint">{{ t("ai.audit_help") }}</p></div><span class="badge-neutral num">{{ recent|length }}</span></div>
+    <div class="overflow-x-auto"><table class="data-table min-w-[860px]"><thead><tr><th>{{ t("common.time") }}</th><th>{{ t("ai.feature") }}</th><th>{{ t("common.status") }}</th><th>{{ t("ai.actor") }}</th><th>{{ t("ai.latency") }}</th><th>{{ t("ai.tokens") }}</th><th>{{ t("ai.cost") }}</th><th>{{ t("ai.validation") }}</th></tr></thead><tbody>{% for row in recent %}<tr><td class="num text-xs">{{ row.created_at|datetime }}</td><td><span class="font-semibold">{{ t("ai.feature_" ~ row.feature) }}</span><p class="mt-0.5 font-mono text-2xs text-ink-muted">{{ row.prompt_version }}</p></td><td><span class="badge-{{ 'safe' if row.status == 'VERIFIED' else 'warn' }}">{{ row.status }}</span>{% if row.cache_hit %}<p class="mt-1 text-2xs text-safe-700">{{ t("ai.cache_hit") }}</p>{% elif row.fallback_reason %}<p class="mt-1 font-mono text-2xs text-ink-muted">{{ row.fallback_reason }}</p>{% endif %}</td><td><span class="text-xs font-semibold text-ink">{{ row.actor_role|replace('_', ' ')|title }}</span><p class="mt-0.5 text-2xs text-ink-muted">{{ facility_names.get(row.facility_id, t("common.none")) }}</p></td><td class="num">{{ row.latency_ms|num }} ms</td><td class="num">{{ (row.prompt_tokens + row.completion_tokens)|num }}</td><td class="num">${{ "%.5f"|format(row.estimated_cost_usd) }}</td><td><span class="badge-{{ 'safe' if row.validation_json.source_bound else 'warn' }}">{{ t("ai.source_bound") }}</span></td></tr>{% else %}<tr><td colspan="8" class="text-center text-ink-muted">{{ t("ai.no_recent") }}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+
+  <aside class="space-y-4">
+    <section class="card card-pad"><h2 class="card-title">{{ t("ai.optimizer_title") }}</h2><p class="card-hint">{{ t("ai.optimizer_help") }}</p><form method="post" action="/admin/ai/optimizer-advice" class="mt-4"><button class="btn-secondary btn-sm w-full" type="submit">{{ icon("sparkles", "h-4 w-4") }} {{ t("ai.generate_optimizer") }}</button></form></section>
+    <section class="card card-pad"><h2 class="card-title">{{ t("ai.runtime_policy") }}</h2><dl class="mt-4 space-y-2 text-xs"><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.provider") }}</dt><dd class="font-semibold">Qwen</dd></div><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.model") }}</dt><dd class="font-mono">{{ runtime.model }}</dd></div><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.timeout") }}</dt><dd class="num">{{ runtime.timeout_seconds|num }}s</dd></div><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.retries") }}</dt><dd class="num">{{ runtime.max_retries }}</dd></div><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.temperature") }}</dt><dd class="num">{{ policy.temperature }}</dd></div><div class="flex justify-between gap-3"><dt class="text-ink-muted">{{ t("ai.response_format") }}</dt><dd class="font-mono">json_object</dd></div></dl></section>
+    <section class="card card-pad"><h2 class="card-title">{{ t("ai.privacy_policy") }}</h2><p class="card-hint">{{ runtime.data_policy }}</p><ul class="mt-3 space-y-2 text-xs text-ink-muted"><li>✓ {{ t("ai.no_raw_prompts") }}</li><li>✓ {{ t("ai.identities_blocked") }}</li><li>✓ {{ t("ai.numbers_validated") }}</li><li>✓ {{ t("ai.human_gate_enforced") }}</li></ul><details class="mt-3"><summary class="cursor-pointer text-2xs font-semibold text-info-700">{{ t("ai.view_blocked_fields") }}</summary><p class="mt-2 break-words font-mono text-2xs leading-relaxed text-ink-muted">{{ policy.blocked_data|join(', ') }}</p></details></section>
+    <section class="note-info text-xs"><strong>{{ t("ai.cost_notice_title") }}</strong><p class="mt-1">{{ t("ai.cost_notice") }}</p></section>
+  </aside>
+</div>
+{% endblock %}

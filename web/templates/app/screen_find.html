@@ -1,0 +1,137 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, empty with context %}
+
+{% block content %}
+
+<div class="card card-pad mb-4">
+  <h2 class="text-sm font-semibold text-ink">{{ t("ops.who_in_chair") }}</h2>
+  <p class="mt-1 text-xs text-ink-muted">
+    {{ t("ops.find_donor_body") }}
+    {% if is_camp %}
+      {{ t("ops.find_donor_camp_body") }}
+    {% endif %}
+  </p>
+
+  <form method="get" action="/app/sessions/{{ session.id }}/screen"
+        class="mt-3 flex gap-2">
+    <input class="field {% if is_camp %}text-base{% endif %} flex-1" name="q"
+           value="{{ query }}" autofocus autocomplete="off"
+           placeholder="{{ t('ops.find_donor_placeholder') }}">
+    <button type="submit" class="btn-primary">{{ t("common.search") }}</button>
+  </form>
+</div>
+
+{% if searched %}
+  {% if matches %}
+    <div class="card mb-4">
+      <div class="border-b border-line px-4 py-3">
+        <h3 class="text-sm font-semibold text-ink">
+          {{ t("ops.matches_on_register", count=matches|length) }}
+        </h3>
+      </div>
+
+      <div class="divide-y divide-line">
+        {% for donor in matches %}
+          <form method="post" action="/app/sessions/{{ session.id }}/screen/start"
+                class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <input type="hidden" name="donor_id" value="{{ donor.id }}">
+            <div>
+              <span class="text-sm font-medium text-ink">
+                {{ donor.full_name or t("ops.unnamed_donor") }}
+              </span>
+              <span class="ms-2 font-mono text-2xs text-ink-muted">{{ donor.donor_code }}</span>
+              <span class="block text-2xs text-ink-muted">
+                {{ t("ops." ~ donor.gender|lower) if donor.gender else "" }}
+                {%- if donor.date_of_birth %} · {{ t("ops.born", date=donor.date_of_birth|date) }}{% endif %}
+                {%- if donor.last_donation_at %} · {{ t("ops.last_gave", date=donor.last_donation_at|date) }}{% endif %}
+              </span>
+            </div>
+            <button type="submit" class="btn-primary">{{ t("ops.start_screening") }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <div class="card card-pad mb-4">
+      {{ empty(t("ops.no_donor_match"), t("ops.no_donor_match_body")) }}
+    </div>
+  {% endif %}
+{% endif %}
+
+{# ------------------------------------------------------ inline registration #}
+<div class="card card-pad">
+  <h3 class="text-sm font-semibold text-ink">{{ t("ops.register_donor") }}</h3>
+  <p class="mt-1 text-xs text-ink-muted">{{ t("ops.register_donor_body") }}</p>
+
+  <form method="post" action="/app/donors/register"
+        class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <input type="hidden" name="session_id" value="{{ session.id }}">
+
+    <div class="sm:col-span-2">
+      <label class="label" for="d-name">{{ t("ops.full_name") }}</label>
+      <input class="field {% if is_camp %}text-base{% endif %}" id="d-name"
+             name="full_name" required autocomplete="off">
+    </div>
+
+    <div>
+      <label class="label" for="d-sex">{{ t("ops.sex") }}</label>
+      <select class="field" id="d-sex" name="gender" required>
+        <option value="MALE">{{ t("ops.male") }}</option>
+        <option value="FEMALE">{{ t("ops.female") }}</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="label" for="d-dob">{{ t("ops.date_of_birth") }}</label>
+      <input class="field num" id="d-dob" name="date_of_birth" type="date" required>
+    </div>
+
+    <div>
+      <label class="label" for="d-group">{{ t("common.blood_group") }}</label>
+      <select class="field" id="d-group" name="blood_group_id">
+        <option value="">{{ t("ops.not_yet_typed") }}</option>
+        {% for gid, code in groups %}
+          <option value="{{ gid }}">{{ code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="label" for="d-phone">{{ t("common.phone") }}</label>
+      <input class="field num" id="d-phone" name="phone" autocomplete="off"
+             placeholder="0300-1234567">
+    </div>
+
+    {% if not is_camp %}
+      <div>
+        <label class="label" for="d-cnic">{{ t("ops.cnic_last_four") }}</label>
+        <input class="field num" id="d-cnic" name="cnic_last4" maxlength="4"
+               autocomplete="off" placeholder="1234">
+      </div>
+
+      <div>
+        <label class="label" for="d-type">{{ t("ops.donor_type") }}</label>
+        <select class="field" id="d-type" name="donor_type">
+          <option value="VOLUNTARY">{{ t("ops.donor_type_voluntary") }}</option>
+          <option value="REPLACEMENT" selected>{{ t("ops.donor_type_replacement") }}</option>
+          <option value="DIRECTED">{{ t("ops.donor_type_directed") }}</option>
+        </select>
+      </div>
+    {% endif %}
+
+    <div class="sm:col-span-2 lg:col-span-3">
+      <label class="flex items-center gap-2 text-xs text-ink-secondary">
+        <input type="checkbox" name="consent_contact" value="1" class="checkbox">
+        {{ t("ops.contact_consent") }}
+      </label>
+    </div>
+
+    <div class="flex items-end">
+      <button type="submit" class="btn-primary">{{ t("ops.register_and_screen") }}</button>
+    </div>
+  </form>
+
+  <p class="mt-3 text-2xs text-ink-muted">{{ t("ops.cnic_privacy_note") }}</p>
+</div>
+
+{% endblock %}

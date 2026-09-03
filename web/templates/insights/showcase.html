@@ -1,0 +1,120 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi with context %}
+
+{% block subheader %}
+<div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 sm:px-6">
+  <span class="badge-brand">{{ t("showcase.four_minute") }}</span>
+  <span class="badge-{{ 'safe' if release_ready else 'warn' }} badge-dot">
+    {{ t("showcase.release_ready") if release_ready else t("showcase.release_attention") }}
+  </span>
+  <span class="text-2xs text-ink-muted">{{ t("showcase.current_role", role=role_label) }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+{% set tone_classes = {
+  "brand": "bg-brand-50 text-brand-700",
+  "info": "bg-info-50 text-info-700",
+  "safe": "bg-safe-50 text-safe-700",
+  "warn": "bg-warn-50 text-warn-700",
+  "neutral": "bg-surface-sunken text-ink-secondary"
+} %}
+<section class="card overflow-hidden">
+  <div class="bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 p-6 text-white sm:p-8">
+    <div class="max-w-4xl">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-white/70">{{ t("showcase.eyebrow") }}</p>
+      <h2 class="mt-3 text-2xl font-bold leading-tight text-white sm:text-3xl">{{ t("showcase.headline") }}</h2>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-white/85 sm:text-base">{{ t("showcase.intro") }}</p>
+      <div class="mt-5 flex flex-wrap gap-2">
+        <a class="inline-flex min-h-10 items-center rounded-lg bg-white px-4 py-2 text-sm font-bold text-brand-700 shadow-card transition hover:bg-brand-50" href="#story">
+          {{ t("showcase.start_story") }}
+        </a>
+        <a class="inline-flex min-h-10 items-center rounded-lg border border-white/40 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10" href="/insights/command-centre">
+          {{ t("showcase.open_command") }}
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-4">
+    <div class="bg-surface p-4"><p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">{{ t("showcase.proof_database") }}</p><p class="mt-1 text-sm font-bold text-safe-600">{{ t("showcase.healthy") if release_checks.database else t("showcase.attention") }}</p></div>
+    <div class="bg-surface p-4"><p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">{{ t("showcase.proof_schema") }}</p><p class="mt-1 text-sm font-bold text-safe-600">{{ t("showcase.current") if release_checks.schema else t("showcase.attention") }}</p></div>
+    <div class="bg-surface p-4"><p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">{{ t("showcase.proof_forecast") }}</p><p class="mt-1 text-sm font-bold {{ 'text-safe-600' if release_checks.forecast else 'text-warn-700' }}">{{ t("showcase.measured") if release_checks.forecast else t("showcase.attention") }}</p></div>
+    <div class="bg-surface p-4"><p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">{{ t("showcase.proof_data") }}</p><p class="mt-1 text-sm font-bold text-safe-600">{{ t("showcase.seeded") if release_checks.data else t("showcase.attention") }}</p></div>
+  </div>
+</section>
+
+<section class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="{{ t('showcase.live_evidence') }}">
+  {{ kpi(t("showcase.donors"), stats.donors|num, tone="brand", foot=t("showcase.tenant_scoped")) }}
+  {{ kpi(t("showcase.available_units"), stats.available_units|num, tone="info", foot=t("showcase.screening_passed")) }}
+  {{ kpi(t("showcase.active_requests"), stats.active_requests|num, tone="warn", foot=t("showcase.transactional_queue")) }}
+  {{ kpi(t("showcase.network_actions"), (stats.rescue_units + stats.transfers)|num, tone="safe", foot=t("showcase.rescue_and_transfer")) }}
+</section>
+
+<div id="story" class="mt-4 grid scroll-mt-28 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.75fr)]">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">{{ t("showcase.story_title") }}</h2>
+        <p class="mt-0.5 text-2xs text-ink-muted">{{ t("showcase.story_help") }}</p>
+      </div>
+      <span class="badge-neutral num">04:00</span>
+    </div>
+    <ol class="divide-y divide-line">
+      {% for chapter in chapters %}
+        <li class="p-4 sm:p-5">
+          <div class="flex gap-3 sm:gap-4">
+            <div class="shrink-0 text-center">
+              <span class="grid h-9 w-9 place-items-center rounded-full text-xs font-bold {{ tone_classes[chapter.tone] }}">{{ chapter.number }}</span>
+              <span class="num mt-1.5 block text-2xs text-ink-muted">{{ chapter.duration }}</span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-sm font-bold text-ink">{{ t(chapter.title) }}</h3>
+              <p class="mt-1 text-sm leading-relaxed text-ink-secondary">{{ t(chapter.body) }}</p>
+              <div class="mt-2 rounded-lg bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+                <strong class="text-ink">{{ t("showcase.prove") }}</strong> {{ t(chapter.proof) }}
+              </div>
+              {% if chapter.available %}
+                <a class="btn-secondary btn-sm mt-3" href="{{ chapter.url }}">{{ t(chapter.action) }}</a>
+              {% else %}
+                <span class="badge-neutral mt-3">{{ t("showcase.not_in_role") }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <aside class="space-y-4">
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">{{ t("showcase.forecast_evidence") }}</h2>
+        {% if quality.available %}<span class="badge-{{ 'safe' if quality.gates_passed == quality.gates_total else 'warn' }}">{{ quality.gates_passed }}/{{ quality.gates_total }}</span>{% endif %}
+      </div>
+      {% if quality.available %}
+        <dl class="divide-y divide-line px-4 pb-2 sm:px-5">
+          <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-ink-muted">{{ t("showcase.decision_wape") }}</dt><dd class="num text-sm font-bold {{ 'text-safe-600' if quality.gates.decision_wape else 'text-critical-600' }}">{{ (quality.decision_wape * 100)|pct(1) }}</dd></div>
+          <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-ink-muted">{{ t("showcase.beats_naive") }}</dt><dd class="num text-sm font-bold {{ 'text-safe-600' if quality.gates.beats_naive else 'text-critical-600' }}">{{ quality.beats_naive|pct(1) }}</dd></div>
+          <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-ink-muted">P10–P90</dt><dd class="num text-sm font-bold {{ 'text-safe-600' if quality.gates.coverage else 'text-critical-600' }}">{{ (quality.coverage * 100)|pct(1) }}</dd></div>
+          <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-ink-muted">{{ t("showcase.shortage_recall") }}</dt><dd class="num text-sm font-bold {{ 'text-safe-600' if quality.gates.recall else 'text-critical-600' }}">{{ (quality.recall * 100)|pct(1) }}</dd></div>
+        </dl>
+        <p class="border-t border-line px-4 py-3 text-2xs leading-relaxed text-ink-muted sm:px-5">{{ t("showcase.group_noise_note", wape=(quality.group_wape * 100)|round(1), floor=(quality.noise_floor * 100)|round(1)) }}</p>
+      {% else %}
+        <p class="p-5 text-sm text-ink-muted">{{ t("showcase.no_quality") }}</p>
+      {% endif %}
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="card-title">{{ t("showcase.live_proof") }}</h2>
+      <ul class="mt-3 space-y-2 text-xs text-ink-secondary">
+        <li class="flex items-center justify-between gap-3"><span>{{ t("showcase.donations") }}</span><strong class="num text-ink">{{ stats.donations|num }}</strong></li>
+        <li class="flex items-center justify-between gap-3"><span>{{ t("showcase.rescue_units") }}</span><strong class="num text-ink">{{ stats.rescue_units|num }}</strong></li>
+        <li class="flex items-center justify-between gap-3"><span>{{ t("showcase.transfers") }}</span><strong class="num text-ink">{{ stats.transfers|num }}</strong></li>
+        <li class="flex items-center justify-between gap-3"><span>{{ t("showcase.simulations") }}</span><strong class="num text-ink">{{ stats.simulations|num }}</strong></li>
+        <li class="flex items-center justify-between gap-3"><span>{{ t("showcase.open_alerts") }}</span><strong class="num text-ink">{{ stats.open_alerts|num }}</strong></li>
+      </ul>
+      <p class="mt-4 border-t border-line pt-3 text-2xs leading-relaxed text-ink-muted">{{ t("showcase.live_proof_help") }}</p>
+    </section>
+  </aside>
+</div>
+{% endblock %}

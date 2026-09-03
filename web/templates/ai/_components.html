@@ -1,0 +1,55 @@
+{% from "layout/icons.html" import icon %}
+
+{% macro status_badge(result) -%}
+  {% if result.verified %}
+    <span class="badge-safe badge-dot">{{ t("ai.verified") }}</span>
+  {% elif result.status == "FALLBACK" %}
+    <span class="badge-warn badge-dot">{{ t("ai.fallback") }}</span>
+  {% else %}
+    <span class="badge-critical badge-dot">{{ t("ai.blocked") }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro result_content(result, compact=false) -%}
+  <div class="{{ 'space-y-3' if compact else 'space-y-4' }}" data-ai-status="{{ result.status }}">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">{{ icon("sparkles", "h-4 w-4") }}</span>
+        <div>
+          <h3 class="text-sm font-bold text-ink">{{ result.content.headline }}</h3>
+          <p class="text-2xs text-ink-muted">Qwen · {{ result.model }}</p>
+        </div>
+      </div>
+      {{ status_badge(result) }}
+    </div>
+    <div class="space-y-2 text-sm leading-relaxed text-ink-secondary">
+      {% for paragraph in result.content.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+    </div>
+    {% if result.content.actions %}
+      <div class="grid gap-2 {{ 'sm:grid-cols-2' if result.content.actions|length > 1 else '' }}">
+        {% for action in result.content.actions %}
+          <div class="rounded-lg border p-3 {{ 'border-critical-200 bg-critical-50' if action.priority == 'critical' else 'border-warn-200 bg-warn-50' if action.priority == 'high' else 'border-line bg-surface-sunken' }}">
+            <p class="text-xs font-bold text-ink">{{ action.label }}</p>
+            <p class="mt-1 text-2xs leading-relaxed text-ink-muted">{{ action.reason }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if result.content.limitations %}
+      <div class="note-info text-xs">
+        <strong>{{ t("ai.limitations") }}</strong>
+        <ul class="mt-1 list-disc space-y-1 ps-4">{% for item in result.content.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+    <details class="rounded-lg border border-line bg-surface px-3 py-2">
+      <summary class="cursor-pointer text-2xs font-semibold text-info-700">{{ t("ai.evidence") }}</summary>
+      <dl class="mt-2 grid gap-2 text-2xs text-ink-muted sm:grid-cols-2">
+        <div><dt>{{ t("ai.prompt_version") }}</dt><dd class="font-mono text-ink">rabta-fact-bound-v1</dd></div>
+        <div><dt>{{ t("ai.interaction") }}</dt><dd class="font-mono text-ink">{{ result.interaction_id[:12] }}</dd></div>
+        <div><dt>{{ t("ai.numerals_checked") }}</dt><dd class="num text-ink">{{ result.validation.numerals_checked or 0 }}</dd></div>
+        <div><dt>{{ t("ai.source_bound") }}</dt><dd class="text-ink">{{ t("common.yes") if result.validation.source_bound else t("common.no") }}</dd></div>
+        {% if result.fallback_reason %}<div class="sm:col-span-2"><dt>{{ t("ai.fallback_reason") }}</dt><dd class="font-mono text-ink">{{ result.fallback_reason }}</dd></div>{% endif %}
+      </dl>
+    </details>
+  </div>
+{%- endmacro %}

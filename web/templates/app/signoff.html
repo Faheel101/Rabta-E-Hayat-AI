@@ -1,0 +1,129 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import empty with context %}
+
+{% block toolbar %}
+<span class="hidden text-2xs text-ink-muted sm:block">
+  {{ t("ops.awaiting_review_count", count=total|num) }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+<div class="card card-pad mb-4">
+  <h2 class="text-sm font-semibold text-ink">{{ t("ops.signoff_why") }}</h2>
+  <p class="mt-1 text-xs leading-relaxed text-ink-secondary">{{ t("ops.signoff_why_body") }}</p>
+  <p class="mt-2 text-xs leading-relaxed text-ink-secondary">{{ t("ops.signoff_governance_body") }}</p>
+</div>
+
+{% if grouped %}
+  {% for reason_code, cases in grouped %}
+    {% set rule = rules.get(reason_code, {}) %}
+
+    <div class="card mb-4">
+      <div class="border-b border-line px-4 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold text-ink">
+            {{ t("eligibility.reason_" ~ reason_code|lower) }}
+          </h3>
+          <span class="badge-warn">
+            {{ t("ops.donors_held", count=cases|length) }}
+          </span>
+        </div>
+      </div>
+
+      {# ---------------------------------------------- the disagreement #}
+      <div class="grid gap-3 border-b border-line bg-surface-sunken px-4 py-3 sm:grid-cols-2">
+        <div class="rounded-md border border-line bg-surface p-3">
+          <p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+            {{ t("ops.currently_applied") }}
+          </p>
+          <p class="mt-1 text-sm text-ink">
+            {{ t("ops.signoff_limb_" ~ rule.applied|lower) }}
+          </p>
+        </div>
+
+        <div class="rounded-md border border-dashed border-line p-3">
+          <p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+            {{ t("ops.alternative") }}
+          </p>
+          <p class="mt-1 text-sm text-ink-secondary">
+            {{ t("ops.signoff_limb_" ~ rule.alternative|lower) }}
+          </p>
+        </div>
+
+        {% if rule.note %}
+          <p class="text-xs leading-relaxed text-ink-secondary sm:col-span-2">
+            {{ t("ops.signoff_note_" ~ reason_code|lower) }}
+          </p>
+        {% endif %}
+      </div>
+
+      {# --------------------------------------------------- the donors #}
+      <div class="divide-y divide-line">
+        {% for case in cases[:12] %}
+          <div class="px-4 py-3" x-data="{ open: false }">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <a class="link text-sm font-medium" href="/app/donors/{{ case.donor_id }}">
+                  {{ case.donor_name or t("ops.unnamed_donor") }}
+                </a>
+                <span class="ms-2 font-mono text-2xs text-ink-muted">
+                  {{ case.donor_code }}
+                </span>
+                <span class="block text-2xs text-ink-muted">
+                  {{ t("ops.deferred_on", date=case.deferred_at|date) }}
+                  · {{ t("ops.held_days", days=case.days_waiting) }}
+                  {%- if case.is_permanent %} · {{ t("ops.recorded_permanent") }}{% endif %}
+                  {%- if case.recorded_by %} · {{ t("ops.recorded_by", actor=case.recorded_by) }}{% endif %}
+                </span>
+              </div>
+
+              <button type="button" class="btn-secondary" @click="open = !open"
+                      x-text="open ? '{{ t('common.cancel') }}' : '{{ t('ops.review') }}'"></button>
+            </div>
+
+            <div x-show="open" x-cloak class="mt-3 grid gap-3 sm:grid-cols-2">
+              <form method="post" action="/app/signoff/{{ case.deferral_id }}/lift"
+                    class="rounded-md border border-line p-3">
+                <label class="label" for="lift-{{ case.deferral_id }}">
+                  {{ t("ops.lift_deferral") }}
+                </label>
+                <textarea class="field" rows="2" name="reason"
+                          id="lift-{{ case.deferral_id }}"
+                          placeholder="{{ t('ops.lift_placeholder') }}"></textarea>
+                <button type="submit" class="btn-primary mt-2 w-full">
+                  {{ t("ops.lift_reinstate") }}
+                </button>
+              </form>
+
+              <form method="post" action="/app/signoff/{{ case.deferral_id }}/uphold"
+                    class="rounded-md border border-line p-3">
+                <label class="label" for="hold-{{ case.deferral_id }}">
+                  {{ t("ops.uphold_deferral") }}
+                </label>
+                <textarea class="field" rows="2" name="reason"
+                          id="hold-{{ case.deferral_id }}"
+                          placeholder="{{ t('ops.uphold_placeholder') }}"></textarea>
+                <button type="submit" class="btn-secondary mt-2 w-full">
+                  {{ t("ops.uphold_action") }}
+                </button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if cases|length > 12 %}
+        <p class="border-t border-line px-4 py-2 text-2xs text-ink-muted">
+          {{ t("ops.showing_longest", count=cases|length) }}
+        </p>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <p class="text-2xs text-ink-muted">{{ t("ops.signoff_audit_note") }}</p>
+{% else %}
+  {{ empty(t("ops.no_signoff"), t("ops.no_signoff_body")) }}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import status_badge, group_chip with context %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div><span class="font-mono text-xs text-ink-muted">{{ record.tracking_code }}</span><h1 class="mt-1 text-xl">{{ t("tr.tracking_title") }}</h1><p class="mt-1 text-sm text-ink-muted">{{ source.name_en }} → {{ destination.name_en }}</p></div>
+    <div class="flex items-center gap-2">{{ status_badge(record.status) }}<a class="btn-secondary btn-sm" href="/insights/transfer-plan/{{ record.id }}">{{ t("tr.open_transfer") }}</a></div>
+  </div>
+
+  {% set stages = [
+    ("RECOMMENDED", t("tr.recommended"), record.recommended_at or record.created_at),
+    ("APPROVED", t("tr.approved"), record.approved_at),
+    ("DISPATCHED", t("tr.dispatched"), record.dispatched_at),
+    ("IN_TRANSIT", t("tr.in_transit"), record.in_transit_at),
+    ("RECEIVED", t("tr.received"), record.received_at)
+  ] %}
+  {% set order = {"RECOMMENDED":0,"APPROVED":1,"DISPATCHED":2,"IN_TRANSIT":3,"RECEIVED":4,"FAILED_COLD_CHAIN":4,"REJECTED":0,"CANCELLED":1} %}
+  <section class="card card-pad">
+    <div class="grid gap-4 sm:grid-cols-5">
+      {% for code, label, time in stages %}
+      {% set done = order.get(record.status,0) >= loop.index0 %}
+      <div class="relative">
+        <div class="flex items-center sm:block"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full {{ 'bg-safe-500 text-white' if done else 'bg-surface-sunken text-ink-faint' }} text-xs font-bold">{% if done %}✓{% else %}{{ loop.index }}{% endif %}</span>{% if not loop.last %}<span class="mx-2 h-px flex-1 {{ 'bg-safe-500' if done else 'bg-line' }} sm:absolute sm:start-8 sm:top-4 sm:mx-0 sm:w-[calc(100%-2rem)]"></span>{% endif %}</div>
+        <p class="mt-2 text-xs font-semibold">{{ label }}</p><p class="mt-0.5 text-2xs text-ink-muted">{{ time|datetime if time else t("tr.pending") }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if record.status == 'FAILED_COLD_CHAIN' %}<div class="note-critical mt-4"><strong>{{ t("tr.shipment_quarantined") }}</strong><p class="mt-1 text-xs">{{ record.failed_reason|replace('_',' ')|title }}</p></div>{% endif %}
+  {% if record.status == 'CANCELLED' %}<div class="note-warn mt-4"><strong>{{ t("tr.movement_cancelled") }}</strong><p class="mt-1 text-xs">{{ record.cancellation_reason }}</p></div>{% endif %}
+  {% if record.status == 'REJECTED' %}<div class="note-warn mt-4"><strong>{{ t("tr.recommendation_rejected") }}</strong><p class="mt-1 text-xs">{{ t("tr.reason_" ~ record.rejection_reason) }}</p></div>{% endif %}
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-3">
+    <section class="card card-pad lg:col-span-2"><h2 class="card-title">{{ t("tr.shipment_manifest") }}</h2><div class="mt-3 divide-y divide-line">{% for unit in units %}<div class="flex items-center justify-between gap-3 py-2.5"><span class="font-mono text-xs font-semibold">{{ unit.din }}</span><div class="flex items-center gap-2"><span class="text-xs">{{ component.code }}</span>{{ group_chip(donor_group.code) }}{{ status_badge(unit.status) }}</div></div>{% endfor %}</div></section>
+    <section class="card card-pad"><h2 class="card-title">{{ t("tr.custody_summary") }}</h2><dl class="mt-3 space-y-3 text-xs"><div><dt class="text-2xs text-ink-muted">{{ t("tr.container_id") }}</dt><dd class="mt-0.5 font-mono font-semibold">{{ record.container_id or '—' }}</dd></div><div><dt class="text-2xs text-ink-muted">{{ t("tr.seal_number") }}</dt><dd class="mt-0.5 font-mono font-semibold">{{ record.seal_number or '—' }}</dd></div><div><dt class="text-2xs text-ink-muted">{{ t("tr.courier_name") }}</dt><dd class="mt-0.5 font-semibold">{{ record.courier_name or '—' }}</dd></div><div><dt class="text-2xs text-ink-muted">{{ t("tr.temperature_readings") }}</dt><dd class="mt-0.5 num font-semibold">{{ record.departure_temp_c if record.departure_temp_c is not none else '—' }} °C → {{ record.receiving_temp_c if record.receiving_temp_c is not none else '—' }} °C</dd></div></dl></section>
+  </div>
+
+  <section class="card card-pad mt-4"><h2 class="card-title">{{ t("tr.chain_of_custody") }}</h2><ol class="mt-4 space-y-0"><li class="relative border-s border-line pb-4 ps-5"><i class="absolute -start-1.5 top-0 h-3 w-3 rounded-full bg-info-500 ring-2 ring-surface"></i><p class="text-xs font-semibold">{{ t("tr.recommended") }}</p><p class="text-2xs text-ink-muted">{{ (record.recommended_at or record.created_at)|datetime }} · {{ t("tr.optimizer") }}</p></li>{% for event in timeline %}<li class="relative border-s border-line pb-4 ps-5 last:pb-0"><i class="absolute -start-1.5 top-0 h-3 w-3 rounded-full bg-safe-500 ring-2 ring-surface"></i><p class="text-xs font-semibold">{{ event.action|replace('.',' ')|title }}</p><p class="text-2xs text-ink-muted">{{ event.created_at|datetime }} · {{ event.actor }}</p></li>{% endfor %}</ol></section>
+</div>
+{% endblock %}

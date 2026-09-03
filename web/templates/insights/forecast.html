@@ -1,0 +1,181 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip, risk_badge, empty with context %}
+{% from "layout/icons.html" import icon %}
+
+{% block subheader %}
+<details class="border-t border-line">
+  <summary class="disclosure-summary min-h-12 px-4 py-2 sm:px-6">
+    <span class="disclosure-copy"><strong class="disclosure-title">{{ t("common.filters") }}</strong><span class="disclosure-hint">{% if selected %}{{ selected_facility.name_en }} · {{ selected.component_code }} · {{ selected.group_code }} · {{ horizon }} {{ t("common.days") }}{% else %}{{ t("common.filters_help") }}{% endif %}</span></span>
+    {{ icon("chevron-down", "nav-disclosure-chevron") }}
+  </summary>
+<form method="get" class="grid gap-2 border-t border-line px-4 py-3 sm:grid-cols-2 sm:px-6 lg:grid-cols-[minmax(12rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,.8fr)_8rem_auto]">
+  <div>
+    <label class="label" for="facility_id">{{ t("common.facility") }}</label>
+    <select class="field" id="facility_id" name="facility_id">
+      {% for facility in scope_facilities %}
+        <option value="{{ facility.id }}" {% if facility.id == selected_facility_id %}selected{% endif %}>{{ facility.name_en }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="component_id">{{ t("common.component") }}</label>
+    <select class="field" id="component_id" name="component_id">
+      {% for component in references.components %}
+        <option value="{{ component.id }}" {% if component.id == component_id %}selected{% endif %}>{{ component.code }} · {{ component.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="blood_group_id">{{ t("common.blood_group") }}</label>
+    <select class="field" id="blood_group_id" name="blood_group_id">
+      {% for group in references.groups %}
+        <option value="{{ group.id }}" {% if group.id == blood_group_id %}selected{% endif %}>{{ group.code }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="horizon">{{ t("fc.horizon") }}</label>
+    <select class="field" id="horizon" name="horizon">
+      {% for days in [7, 14, 30] %}<option value="{{ days }}" {% if days == horizon %}selected{% endif %}>{{ days }} {{ t("common.days") }}</option>{% endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="flex items-end"><button class="btn-primary w-full" type="submit">{{ t("fc.update_view") }}</button></div>
+</form>
+</details>
+{% endblock %}
+
+{% block content %}
+{% if selected %}
+<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 class="text-xl">{{ selected.component_code }} · {{ selected.group_code }}</h2>
+      {{ group_chip(selected.group_code) }}
+      {{ risk_badge(selected.risk_bucket) }}
+      {% if diagnostics and diagnostics.is_fallback %}<span class="badge-warn">{{ t("fc.baseline_served") }}</span>{% endif %}
+    </div>
+    <p class="mt-1 text-sm text-ink-muted">{{ selected_facility.name_en }} · {{ t("fc.subtitle") }}</p>
+  </div>
+  <div class="inline-flex rounded-lg border border-line-strong bg-surface p-1">
+    {% for key, label in [("chart", "fc.view_chart"), ("table", "fc.view_table"), ("compare", "fc.view_compare")] %}
+      <a href="?facility_id={{ selected_facility_id }}&component_id={{ component_id }}&blood_group_id={{ blood_group_id }}&horizon={{ horizon }}&view={{ key }}"
+         class="rounded-md px-3 py-1.5 text-xs font-semibold {{ 'bg-brand-500 text-white' if view == key else 'text-ink-secondary hover:bg-surface-sunken' }}">
+        {{ t(label) }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if diagnostics and diagnostics.is_fallback %}
+  <div class="note-warn mb-4">{{ t("fc.fallback_notice") }}</div>
+{% endif %}
+
+{% if view == "chart" %}
+<section class="card overflow-hidden">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">{{ t("fc.forecast") }}</h2>
+      <p class="mt-0.5 text-2xs text-ink-muted">{{ t("fc.chart_help", history=42, horizon=horizon) }}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-2xs text-ink-muted">
+      <span class="flex items-center gap-1.5"><i class="h-0.5 w-5 bg-ink-secondary"></i>{{ t("fc.actual") }}</span>
+      <span class="flex items-center gap-1.5"><i class="h-0.5 w-5 bg-brand-500"></i>{{ t("fc.p50") }}</span>
+      <span class="flex items-center gap-1.5"><i class="h-3 w-5 rounded-sm bg-brand-100"></i>{{ t("fc.band") }}</span>
+    </div>
+  </div>
+  {% if forecast_chart.actual_points or forecast_chart.p50_points %}
+  <div class="overflow-x-auto px-3 pb-3 pt-5 sm:px-5">
+    <svg viewBox="-55 -14 1010 306" class="h-auto min-w-[680px] w-full" role="img" aria-label="{{ t('fc.subtitle') }}">
+      {% for tick in forecast_chart.y_ticks %}
+        <line x1="0" x2="920" y1="{{ tick.y }}" y2="{{ tick.y }}" stroke="#e3e6ea" stroke-width="1"/>
+        <text x="-10" y="{{ tick.y + 4 }}" text-anchor="end" fill="#7c8b98" font-size="11">{{ tick.value }}</text>
+      {% endfor %}
+      <polygon points="{{ forecast_chart.band_points }}" fill="#fbe4e8" opacity=".9"/>
+      <line x1="{{ forecast_chart.today_x }}" x2="{{ forecast_chart.today_x }}" y1="0" y2="250" stroke="#b3122b" stroke-width="1" stroke-dasharray="4 4"/>
+      <text x="{{ forecast_chart.today_x + 5 }}" y="12" fill="#8e0e22" font-size="10">{{ t("fc.today") }}</text>
+      <polyline points="{{ forecast_chart.actual_points }}" fill="none" stroke="#4a5a68" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="{{ forecast_chart.p50_points }}" fill="none" stroke="#b3122b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      {% for tick in forecast_chart.x_ticks %}
+        <text x="{{ tick.x }}" y="278" text-anchor="middle" fill="#7c8b98" font-size="11">{{ tick.label }}</text>
+      {% endfor %}
+    </svg>
+  </div>
+  {% else %}{{ empty(t("common.no_data"), t("fc.select_series")) }}{% endif %}
+</section>
+{% elif view == "table" %}
+<section class="card overflow-hidden">
+  <div class="card-head"><h2 class="card-title">{{ t("fc.forecast_table") }}</h2><span class="card-hint">P10 ≤ P50 ≤ P90</span></div>
+  {% if forecasts %}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>{{ t("common.updated") }}</th><th class="text-end">P10</th><th class="text-end">P50</th><th class="text-end">P90</th><th class="text-end">{{ t("fc.horizon") }}</th></tr></thead>
+      <tbody>
+        {% for row in forecasts %}
+          <tr><td class="num">{{ row.target_date|date }}</td><td class="num text-end">{{ row.p10|num(1) }}</td><td class="num text-end font-semibold">{{ row.p50|num(1) }}</td><td class="num text-end">{{ row.p90|num(1) }}</td><td class="num text-end">{{ row.horizon_days }}d</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ empty(t("common.no_data"), t("fc.select_series")) }}{% endif %}
+</section>
+{% else %}
+<section>
+  <div class="mb-3"><h2 class="card-title">{{ t("fc.view_compare") }}</h2><p class="mt-1 text-xs text-ink-muted">{{ t("fc.compare_help") }}</p></div>
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {% for item in series %}
+      <a href="?facility_id={{ selected_facility_id }}&component_id={{ item.component_id }}&blood_group_id={{ item.blood_group_id }}&horizon={{ horizon }}&view=chart" class="card card-pad transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-raised">
+        <div class="flex items-center justify-between gap-2"><strong>{{ item.component_code }}</strong>{{ group_chip(item.group_code) }}</div>
+        <div class="mt-4 flex items-end justify-between gap-2">
+          <div><p class="num text-2xl font-bold text-ink">{{ item.days_of_cover|num(1) }}<span class="ms-1 text-xs font-medium text-ink-muted">d</span></p><p class="mt-1 text-2xs text-ink-muted">{{ item.units_available|num }} {{ t("fc.on_hand")|lower }}</p></div>
+          {{ risk_badge(item.risk_bucket) }}
+        </div>
+        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-sunken"><div class="h-full rounded-full {{ 'bg-critical-500' if item.risk_bucket == 'CRITICAL' else 'bg-warn-500' if item.risk_bucket in ['WARNING','WATCH'] else 'bg-safe-500' }}" style="width: {{ [item.risk_pct or 0, 100]|min }}%"></div></div>
+        <p class="mt-1 text-end text-2xs num text-ink-muted">{{ item.risk_pct|pct(0) }} {{ t("risk.label")|lower }}</p>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if view != "compare" %}
+<div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,.7fr)]">
+  <section class="card overflow-hidden">
+    <div class="card-head">
+      <div><h2 class="card-title">{{ t("fc.projected_stock") }}</h2><p class="mt-0.5 text-2xs text-ink-muted">{{ t("fc.projection_help") }}</p></div>
+      {% if breach_date %}<span class="badge-critical">{{ t("fc.breaches_reserve", date=breach_date|date("%d %b")) }}</span>{% else %}<span class="badge-safe">{{ t("fc.no_breach") }}</span>{% endif %}
+    </div>
+    {% if projection %}
+    <div class="overflow-x-auto px-3 pb-3 pt-5 sm:px-5">
+      <div class="mb-2 flex items-center gap-4 text-2xs text-ink-muted"><span class="flex items-center gap-1"><i class="h-0.5 w-5 bg-info-500"></i>{{ t("fc.projected_available") }}</span><span class="flex items-center gap-1"><i class="h-0.5 w-5 border-t border-dashed border-critical-500"></i>{{ t("fc.reserve_floor") }}</span></div>
+      <svg viewBox="-55 -12 1010 206" class="h-auto min-w-[600px] w-full" role="img" aria-label="{{ t('fc.projected_stock') }}">
+        {% for tick in stock_chart.y_ticks %}<line x1="0" x2="920" y1="{{ tick.y }}" y2="{{ tick.y }}" stroke="#e3e6ea"/><text x="-10" y="{{ tick.y + 4 }}" text-anchor="end" fill="#7c8b98" font-size="11">{{ tick.value }}</text>{% endfor %}
+        <polyline points="{{ stock_chart.floor_points }}" fill="none" stroke="#d32f2f" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <polyline points="{{ stock_chart.available_points }}" fill="none" stroke="#1565c0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        {% for tick in stock_chart.x_ticks %}<text x="{{ tick.x }}" y="180" text-anchor="middle" fill="#7c8b98" font-size="11">{{ tick.label }}</text>{% endfor %}
+      </svg>
+      {% if stockout_date %}<div class="note-critical mt-2">{{ t("fc.stockout_risk", date=stockout_date|date) }}</div>{% endif %}
+    </div>
+    {% else %}{{ empty(t("common.no_data"), t("fc.projection_unavailable")) }}{% endif %}
+  </section>
+
+  <details class="disclosure-card">
+    <summary class="disclosure-summary"><span class="disclosure-copy"><strong class="disclosure-title">{{ t("fc.model_diagnostics") }}</strong><span class="disclosure-hint">{{ t("common.supporting_details_help") }}</span></span>{% if diagnostics %}<span class="badge-{{ 'warn' if diagnostics.is_fallback else 'safe' }}">{{ diagnostics.regime|replace('_',' ')|title }}</span>{% endif %}{{ icon("chevron-down", "nav-disclosure-chevron") }}</summary>
+    {% if diagnostics %}
+      <dl class="divide-y divide-line border-t border-line px-4 sm:px-5">
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.model") }}</dt><dd class="font-mono text-end">{{ diagnostics.model }}</dd></div>
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.wape") }}</dt><dd class="num font-semibold {{ 'text-safe-600' if diagnostics.wape is not none and diagnostics.wape <= 25 else 'text-critical-600' }}">{{ diagnostics.wape|pct(1) }}</dd></div>
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.wape_vs_naive") }}</dt><dd class="num">{{ diagnostics.baseline_wape|pct(1) }} · {{ diagnostics.skill|pct(1) }} {{ t("fc.skill") }}</dd></div>
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.noise_floor") }}</dt><dd class="num">{{ diagnostics.noise_floor|pct(1) }}</dd></div>
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.coverage") }}</dt><dd class="num">{{ diagnostics.coverage|pct(1) }} <span class="text-ink-faint">({{ t("fc.coverage_target") }})</span></dd></div>
+        <div class="flex justify-between gap-3 py-2.5 text-xs"><dt class="text-ink-muted">{{ t("fc.last_trained") }}</dt><dd class="num">{{ diagnostics.generated_at|datetime }}</dd></div>
+      </dl>
+      <div class="border-t border-line bg-surface-sunken px-4 py-3 text-2xs leading-relaxed text-ink-muted sm:px-5">{{ t("fc.diagnostics_honesty") }}</div>
+    {% else %}{{ empty(t("fc.no_metrics"), t("fc.no_metrics_help")) }}{% endif %}
+  </details>
+</div>
+{% endif %}
+{% else %}
+  {{ empty(t("common.no_data"), t("fc.select_series")) }}
+{% endif %}
+{% endblock %}

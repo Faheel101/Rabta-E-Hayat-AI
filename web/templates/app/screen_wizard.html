@@ -1,0 +1,37 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import group_chip with context %}
+
+{% block content %}
+
+{# ------------------------------------------------------------- donor header #}
+<div class="card card-pad mb-4">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="text-lg font-semibold text-ink">
+        {{ donor.full_name or "Unnamed donor" }}
+      </h2>
+      <p class="mt-0.5 text-xs text-ink-muted">
+        <a class="link font-mono" href="/app/donors/{{ donor.id }}">{{ donor.donor_code }}</a>
+        {%- if donor.gender %} · {{ donor.gender|title }}{% endif %}
+        {%- if donor.date_of_birth %} · born {{ donor.date_of_birth|date }}{% endif %}
+        · {{ session.session_code }}
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      {% if group %}{{ group_chip(group) }}{% endif %}
+      {% if is_camp %}<span class="badge-neutral">{{ t("ops.session_type_outreach_camp") }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if donor.last_donation_at %}
+    <p class="mt-3 rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+      Last donated {{ donor.last_donation_at|date }} ·
+      <span class="num">{{ donor.total_donations|num }}</span> donations on record.
+    </p>
+  {% endif %}
+</div>
+
+{% include "app/_screen_body.html" %}
+
+{% endblock %}

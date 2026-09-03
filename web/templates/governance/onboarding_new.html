@@ -1,0 +1,74 @@
+{% extends "layout/base.html" %}
+{% from "layout/icons.html" import icon %}
+{% from "layout/components.html" import facility_type_label with context %}
+
+{% block content %}
+<form method="post" action="/admin/onboarding" x-data="{ orgAction: '{{ values.organization_action or 'NEW' }}', mode: '{{ values.operating_mode or 'STANDALONE' }}', showPassword: false }">
+  {% if form_error %}<div class="mb-4 rounded-xl border border-critical-200 bg-critical-50 px-4 py-3 text-sm text-critical-800" role="alert"><strong>{{ t("common.check_details") }}</strong><p class="mt-1 text-xs">{{ form_error }}</p></div>{% endif %}
+
+  <div class="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-line bg-surface p-2 text-2xs font-semibold sm:grid-cols-4">
+    {% for number, label in [(1,'governance.step_network'),(2,'governance.step_facility'),(3,'governance.step_operations'),(4,'governance.step_access')] %}<div class="flex items-center gap-2 rounded-lg px-2 py-2"><span class="grid h-6 w-6 place-items-center rounded-full bg-brand-700 text-white num">{{ number }}</span><span>{{ t(label) }}</span></div>{% endfor %}
+  </div>
+
+  <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+    <div class="min-w-0 space-y-4">
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><p class="text-2xs font-bold uppercase tracking-wider text-brand-700">01</p><h2 class="card-title">{{ t("governance.network_identity") }}</h2><p class="card-hint">{{ t("governance.network_identity_help") }}</p></div></div>
+        <div class="space-y-5 p-4 sm:p-5">
+          <fieldset><legend class="label">{{ t("governance.organization_setup") }}</legend><div class="grid gap-2 sm:grid-cols-2"><label class="choice-card"><input type="radio" name="organization_action" value="NEW" x-model="orgAction"><span><strong>{{ t("governance.organization_new") }}</strong><small>{{ t("governance.organization_new_help") }}</small></span></label><label class="choice-card"><input type="radio" name="organization_action" value="EXISTING" x-model="orgAction"><span><strong>{{ t("governance.organization_existing") }}</strong><small>{{ t("governance.organization_existing_help") }}</small></span></label></div></fieldset>
+          <div x-show="orgAction === 'EXISTING'" x-cloak><label class="label" for="existing-organization">{{ t("governance.organization") }}</label><select class="field" id="existing-organization" name="existing_organization_id" :required="orgAction === 'EXISTING'"><option value="">{{ t("common.choose") }}</option>{% for org in organizations %}<option value="{{ org.id }}" {% if values.existing_organization_id == org.id %}selected{% endif %}>{{ org.name_en }} · {{ org.code }}</option>{% endfor %}</select></div>
+          <div x-show="orgAction === 'NEW'" x-cloak class="space-y-4">
+            <fieldset><legend class="label">{{ t("governance.operating_mode") }}</legend><div class="grid gap-2 sm:grid-cols-2">{% for value, key in [('STANDALONE','standalone'),('HOSPITAL_NETWORK','hospital_network'),('RBC_NETWORK','rbc_network'),('PROVINCIAL_PROGRAMME','provincial_programme')] %}<label class="choice-card"><input type="radio" name="operating_mode" value="{{ value }}" x-model="mode"><span><strong>{{ t("governance.mode_" ~ key) }}</strong><small>{{ t("governance.mode_" ~ key ~ "_help") }}</small></span></label>{% endfor %}</div></fieldset>
+            <div class="grid gap-4 sm:grid-cols-2"><div><label class="label" for="org-code">{{ t("governance.organization_code") }}</label><input class="field font-mono uppercase" id="org-code" name="organization_code" value="{{ values.organization_code or '' }}" minlength="3" maxlength="30" :required="orgAction === 'NEW'" placeholder="CITY_HEALTH"></div><div><label class="label" for="province">{{ t("governance.province") }}</label><input class="field" id="province" name="province" value="{{ values.province or 'Punjab' }}" :required="orgAction === 'NEW'"></div></div>
+            <div class="grid gap-4 sm:grid-cols-2"><div><label class="label" for="org-name-en">{{ t("governance.name_english") }}</label><input class="field" id="org-name-en" name="organization_name_en" value="{{ values.organization_name_en or '' }}" :required="orgAction === 'NEW'"></div><div><label class="label" for="org-name-ur">{{ t("governance.name_urdu") }}</label><input class="field" dir="rtl" id="org-name-ur" name="organization_name_ur" value="{{ values.organization_name_ur or '' }}"></div></div>
+            <div class="grid gap-4 sm:grid-cols-2"><div><label class="label" for="contact-email">{{ t("common.email") }}</label><input class="field" type="email" id="contact-email" name="contact_email" value="{{ values.contact_email or '' }}"></div><div><label class="label" for="contact-phone">{{ t("common.phone") }}</label><input class="field num" id="contact-phone" name="contact_phone" value="{{ values.contact_phone or '' }}"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><p class="text-2xs font-bold uppercase tracking-wider text-brand-700">02</p><h2 class="card-title">{{ t("governance.facility_profile") }}</h2><p class="card-hint">{{ t("governance.onboarding_facility_help") }}</p></div></div>
+        <div class="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
+          <div><label class="label" for="facility-code">{{ t("governance.facility_code") }}</label><input class="field font-mono uppercase" id="facility-code" name="facility_code" value="{{ values.facility_code or '' }}" minlength="3" maxlength="30" required placeholder="DHQ_CITY"></div>
+          <div class="sm:col-span-2"><label class="label" for="facility-name-en">{{ t("governance.name_english") }}</label><input class="field" id="facility-name-en" name="facility_name_en" value="{{ values.facility_name_en or '' }}" required></div>
+          <div><label class="label" for="facility-name-ur">{{ t("governance.name_urdu") }}</label><input class="field" dir="rtl" id="facility-name-ur" name="facility_name_ur" value="{{ values.facility_name_ur or '' }}"></div>
+          <div><label class="label" for="facility-type">{{ t("governance.facility_type") }}</label><select class="field" id="facility-type" name="facility_type" required>{% for value in ['RBC','TERTIARY_HOSPITAL','SPECIALIST_CENTRE','DHQ','THQ'] %}<option value="{{ value }}" {% if values.facility_type == value %}selected{% endif %}>{{ facility_type_label(value) }}</option>{% endfor %}</select></div>
+          <div><label class="label" for="beds">{{ t("governance.beds") }}</label><input class="field num" type="number" id="beds" name="bed_count" value="{{ values.bed_count if values.bed_count is defined else 200 }}" min="0" max="10000" required></div>
+          <div><label class="label" for="district">{{ t("governance.district") }}</label><input class="field" id="district" name="district" value="{{ values.district or '' }}" required></div>
+          <div><label class="label" for="division">{{ t("governance.division") }}</label><input class="field" id="division" name="division" value="{{ values.division or '' }}"></div>
+          <div><label class="label" for="parent-rbc">{{ t("governance.parent_rbc") }}</label><select class="field" id="parent-rbc" name="parent_rbc_id"><option value="">{{ t("governance.no_parent_rbc") }}</option>{% for rbc in parent_rbcs %}<option value="{{ rbc.id }}" {% if values.parent_rbc_id == rbc.id %}selected{% endif %}>{{ rbc.name_en }} · {{ rbc.province }}</option>{% endfor %}</select><p class="field-help">{{ t("governance.parent_rbc_help") }}</p></div>
+          <div><label class="label" for="latitude">{{ t("governance.latitude") }}</label><input class="field num" type="number" step="0.0001" id="latitude" name="latitude" value="{{ values.latitude if values.latitude is defined else 31.5204 }}" min="23" max="38" required></div>
+          <div><label class="label" for="longitude">{{ t("governance.longitude") }}</label><input class="field num" type="number" step="0.0001" id="longitude" name="longitude" value="{{ values.longitude if values.longitude is defined else 74.3587 }}" min="60" max="78" required></div>
+        </div>
+      </section>
+
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><p class="text-2xs font-bold uppercase tracking-wider text-brand-700">03</p><h2 class="card-title">{{ t("governance.operational_setup") }}</h2><p class="card-hint">{{ t("governance.operational_setup_help") }}</p></div></div>
+        <div class="space-y-5 p-4 sm:p-5">
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><div><label class="label" for="integration-mode">{{ t("governance.integration_mode") }}</label><select class="field" id="integration-mode" name="integration_mode" required>{% for value in ['SIMULATED','CSV','FHIR','HL7','API'] %}<option value="{{ value }}" {% if values.integration_mode == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div><div><label class="label" for="response-sla">{{ t("governance.response_sla") }}</label><input class="field num" type="number" id="response-sla" name="network_response_sla_minutes" value="{{ values.network_response_sla_minutes if values.network_response_sla_minutes is defined else 60 }}" min="5" max="1440" required></div></div>
+          <fieldset><legend class="label">{{ t("governance.network_consent") }}</legend><div class="grid gap-2 sm:grid-cols-2"><label class="choice-card"><input type="checkbox" name="shares_inventory" value="yes" {% if values.shares_inventory %}checked{% endif %}><span><strong>{{ t("governance.share_inventory") }}</strong><small>{{ t("governance.share_inventory_help") }}</small></span></label><label class="choice-card"><input type="checkbox" name="shares_contact" value="yes" {% if values.shares_contact %}checked{% endif %}><span><strong>{{ t("governance.share_contact") }}</strong><small>{{ t("governance.share_contact_help") }}</small></span></label></div></fieldset>
+          <fieldset><legend class="label">{{ t("governance.storage_capacity") }}</legend><div class="grid gap-4 sm:grid-cols-3"><div><label class="label" for="fridge-capacity">{{ t("governance.blood_fridge") }}</label><input class="field num" type="number" id="fridge-capacity" name="fridge_capacity" value="{{ values.fridge_capacity if values.fridge_capacity is defined else 250 }}" min="1" max="100000" required><p class="field-help">{{ t("governance.units_capacity") }}</p></div><div><label class="label" for="freezer-capacity">{{ t("governance.plasma_freezer") }}</label><input class="field num" type="number" id="freezer-capacity" name="freezer_capacity" value="{{ values.freezer_capacity if values.freezer_capacity is defined else 150 }}" min="0" max="100000"></div><div><label class="label" for="platelet-capacity">{{ t("governance.platelet_agitator") }}</label><input class="field num" type="number" id="platelet-capacity" name="platelet_capacity" value="{{ values.platelet_capacity if values.platelet_capacity is defined else 48 }}" min="0" max="100000"></div></div></fieldset>
+          <fieldset><legend class="label">{{ t("governance.clinical_services") }}</legend><div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{% for name, key in [('has_trauma_centre','trauma'),('has_obgyn','obgyn'),('has_oncology','oncology'),('has_thalassaemia_centre','thalassaemia'),('has_cardiac_surgery','cardiac')] %}<label class="flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-xs"><input type="checkbox" name="{{ name }}" value="yes" {% if values[name] %}checked{% endif %}><span>{{ t("governance.service_" ~ key) }}</span></label>{% endfor %}</div></fieldset>
+        </div>
+      </section>
+
+      <section class="card overflow-hidden">
+        <div class="card-head"><div><p class="text-2xs font-bold uppercase tracking-wider text-brand-700">04</p><h2 class="card-title">{{ t("governance.first_account") }}</h2><p class="card-hint">{{ t("governance.first_account_help") }}</p></div></div>
+        <div class="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
+          <div><label class="label" for="admin-name">{{ t("governance.full_name") }}</label><input class="field" id="admin-name" name="admin_name" value="{{ values.admin_name or '' }}" required></div>
+          <div><label class="label" for="admin-email">{{ t("common.email") }}</label><input class="field" type="email" id="admin-email" name="admin_email" value="{{ values.admin_email or '' }}" required></div>
+          <div><label class="label" for="admin-role">{{ t("governance.account_role") }}</label><select class="field" id="admin-role" name="admin_role" required><option value="BLOOD_BANK_OFFICER" {% if values.admin_role == 'BLOOD_BANK_OFFICER' %}selected{% endif %}>{{ t("role.bbo") }}</option><option value="RBC_COORDINATOR" {% if values.admin_role == 'RBC_COORDINATOR' %}selected{% endif %}>{{ t("role.rbc_coordinator") }}</option></select></div>
+          <div><label class="label" for="temporary-password">{{ t("governance.temporary_password") }}</label><div class="relative"><input class="field pe-16" :type="showPassword ? 'text' : 'password'" id="temporary-password" name="temporary_password" minlength="12" required autocomplete="new-password"><button class="absolute inset-y-0 end-2 text-2xs font-semibold text-brand-700" type="button" @click="showPassword = !showPassword" x-text="showPassword ? '{{ t('auth.hide_password') }}' : '{{ t('auth.show_password') }}'"></button></div><p class="field-help">{{ t("auth.password_requirements") }}</p></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="space-y-4 xl:sticky xl:top-24 xl:self-start">
+      <section class="card card-pad"><div class="flex items-center gap-2"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-safe-50 text-safe-700">{{ icon("shield-check", "h-4 w-4") }}</span><div><h2 class="card-title">{{ t("governance.safe_activation") }}</h2><p class="card-hint">{{ t("governance.safe_activation_help") }}</p></div></div><ol class="mt-4 space-y-3 text-xs">{% for key in ['draft_first','verify_storage','verify_access','activate_explicitly'] %}<li class="flex gap-2"><span class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-50 text-2xs font-bold text-brand-700 num">{{ loop.index }}</span><span>{{ t("governance.safety_" ~ key) }}</span></li>{% endfor %}</ol></section>
+      <button class="btn-primary w-full" type="submit">{{ icon("arrow-right", "h-4 w-4") }} {{ t("governance.create_draft") }}</button>
+      <a class="btn-secondary w-full" href="/admin/onboarding">{{ t("common.cancel") }}</a>
+      <p class="text-center text-2xs leading-relaxed text-ink-muted">{{ t("governance.no_live_effect") }}</p>
+    </aside>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,205 @@
+{% extends "layout/base.html" %}
+{% from "layout/components.html" import kpi, empty with context %}
+
+{% block toolbar %}
+<span class="hidden text-2xs text-ink-muted sm:block">
+  {{ t("ops.bags_to_separate", count=rows|length) }}
+</span>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  {{ kpi(t("ops.awaiting_separation"), rows|length, foot=t("ops.awaiting_separation_body")) }}
+  {{ kpi(t("ops.yield"), (summary.yield_rate * 100)|round(1)|string ~ "%",
+         foot=t("ops.yield_body", produced=summary.units_produced|num, expected=summary.units_expected|num),
+         tone="warn" if summary.yield_rate < 0.95 else "safe") }}
+  {{ kpi(t("ops.units_lost"), summary.units_lost|num,
+         foot=t("ops.units_lost_body"), tone="warn" if summary.units_lost else "neutral") }}
+  {{ kpi(t("ops.separations"), summary.separations|num, foot=t("ops.separations_body")) }}
+</div>
+
+{% if summary.reconstructed_excluded %}
+  <p class="mb-4 rounded-lg border border-line bg-surface-sunken px-3 py-2 text-2xs text-ink-muted">
+    {{ t("ops.reconstructed_excluded", count=summary.reconstructed_excluded|num) }}
+  </p>
+{% endif %}
+
+{# --------------------------------------------------------------- worklist #}
+<div class="card mb-4">
+  <div class="border-b border-line px-4 py-3">
+    <h3 class="text-sm font-semibold text-ink">{{ t("ops.bags_awaiting") }}</h3>
+    <p class="mt-0.5 text-xs text-ink-muted">{{ t("ops.bags_awaiting_help") }}</p>
+  </div>
+
+  {% if rows %}
+    <div class="divide-y divide-line">
+      {% for row in rows %}
+        {% set bag = row.bag %}
+        <div class="px-4 py-3" x-data="{ open: false }">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span class="font-mono text-xs font-medium text-ink">{{ bag.din }}</span>
+              <span class="ms-2 badge-neutral">{{ t("ops.bag_" ~ bag.bag_type|lower) }}</span>
+              <span class="block text-2xs text-ink-muted">
+                {{ t("ops.donor_code", code=bag.donor_code) }} · {{ t("ops.collected_at", time=bag.collected_at|datetime) }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              {% for code, window in row.windows.items() %}
+                {% if window.allowed %}
+                  <span class="badge-safe"
+                        title="{{ t('ops.hours_window_left', remaining=window.hours_remaining, limit=window.limit) }}">
+                    {{ code }} · {{ window.hours_remaining }}h
+                  </span>
+                {% else %}
+                  <span class="badge-critical"
+                        title="{{ t('ops.window_closed_ago', limit=window.limit, elapsed=(window.hours_elapsed - window.limit)|round(1)) }}">
+                    {{ code }} · {{ t("ops.window_closed") }}
+                  </span>
+                {% endif %}
+              {% endfor %}
+
+              {% if can_process %}
+                <button type="button" class="btn-secondary" @click="open = !open"
+                        x-text="open ? '{{ t('common.cancel') }}' : '{{ t('ops.separate') }}'"></button>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if bag.expired %}
+            <p class="mt-2 text-2xs text-warn-700">
+              {{ t("ops.expired_components", components=bag.expired|join(", ")) }}
+            </p>
+          {% endif %}
+
+          {% if can_process %}
+            <form method="post" action="/app/processing/{{ bag.donation_id }}/separate"
+                  x-show="open" x-cloak class="mt-3 rounded-md border border-line p-3">
+              <p class="text-2xs font-semibold uppercase tracking-wider text-ink-muted">
+                {{ t("ops.actually_produced") }}
+              </p>
+
+              <div class="mt-2 space-y-2">
+                {% for code in bag.expected %}
+                  {% set window = row.windows[code] %}
+                  <div class="flex flex-wrap items-center gap-3">
+                    {% if window.allowed %}
+                      <label class="flex min-w-40 items-center gap-2 text-sm text-ink">
+                        <input type="checkbox" class="checkbox" checked
+                               name="produce_{{ code }}" value="1"
+                               x-ref="p{{ code }}">
+                        {{ code }}
+                      </label>
+
+                      <select class="field flex-1 text-xs" name="loss_{{ code }}">
+                        <option value="">{{ t("ops.produced_no_loss") }}</option>
+                        {% for reason in loss_reasons.get(code, []) %}
+                          <option value="{{ reason }}">
+                            {{ t("ops.not_produced_reason", reason=t("ops.loss_" ~ reason|lower)) }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                    {% else %}
+                      <span class="min-w-40 text-sm text-ink-muted">{{ code }}</span>
+                      <span class="text-xs text-critical-700">
+                        {{ t("ops.window_loss", hours=window.limit) }}
+                      </span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+
+              <div class="mt-3 flex flex-wrap items-end gap-2">
+                <div class="flex-1">
+                  <input class="field" name="notes" autocomplete="off"
+                         placeholder="{{ t('ops.notes_optional') }}">
+                </div>
+                <button type="submit" class="btn-primary">{{ t("ops.record_separation") }}</button>
+              </div>
+
+              <p class="mt-2 text-2xs text-ink-muted">
+                {{ t("ops.loss_requires_cause") }}
+              </p>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="px-4 py-6">
+      {{ empty(t("ops.nothing_separate"), t("ops.nothing_separate_body")) }}
+    </div>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- losses #}
+{% if summary.losses_by_reason %}
+  <div class="card mb-4">
+    <div class="border-b border-line px-4 py-3">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.losses") }}</h3>
+      <p class="mt-0.5 text-xs text-ink-muted">{{ t("ops.losses_help") }}</p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>{{ t("ops.cause") }}</th><th class="text-end">{{ t("common.units") }}</th></tr></thead>
+        <tbody>
+          {% for reason, count in summary.losses_by_reason %}
+            <tr>
+              <td>{% if reason.startswith("SEPARATION_WINDOW_MISSED") %}{{ t("ops.loss_window_missed") }}{% else %}{{ t("ops.loss_" ~ reason|lower) }}{% endif %}</td>
+              <td class="num text-end">{{ count|num }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+{# --------------------------------------------------------------- recent #}
+{% if recent %}
+  <div class="card">
+    <div class="border-b border-line px-4 py-3">
+      <h3 class="text-sm font-semibold text-ink">{{ t("ops.recently_separated") }}</h3>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("common.din") }}</th><th>{{ t("ops.kit") }}</th><th>{{ t("ops.separated") }}</th>
+            <th class="text-end">{{ t("ops.needle_to_spin") }}</th>
+            <th class="text-end">{{ t("ops.yield") }}</th><th>{{ t("ops.loss") }}</th><th>{{ t("ops.by") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent %}
+            <tr>
+              <td class="whitespace-nowrap font-mono text-xs">{{ row.din }}</td>
+              <td class="text-xs text-ink-secondary">{{ t("ops.bag_" ~ row.recipe_code|lower) }}</td>
+              <td class="num whitespace-nowrap text-xs">{{ row.produced_at|datetime }}</td>
+              <td class="num text-end text-xs">
+                {{ (row.minutes_from_collection / 60)|round(1) if row.minutes_from_collection else "—" }} h
+              </td>
+              <td class="num text-end text-xs {% if row.units_produced < row.units_expected %}text-warn-700{% endif %}">
+                {{ row.units_produced }}/{{ row.units_expected }}
+              </td>
+              <td class="text-2xs text-ink-muted">
+                {% if row.loss_reasons %}
+                  {% for code, reason in row.loss_reasons.items() %}
+                    {{ code }}: {% if reason.startswith("SEPARATION_WINDOW_MISSED") %}{{ t("ops.loss_window_missed") }}{% else %}{{ t("ops.loss_" ~ reason|lower) }}{% endif %}
+                  {% endfor %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="text-xs text-ink-secondary">{{ row.produced_by }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}
