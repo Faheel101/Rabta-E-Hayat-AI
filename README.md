@@ -6,6 +6,8 @@ Rabta-e-Hayat combines a complete blood-bank management workflow with demand for
 
 > **Hackathon release:** v0.15.0 uses realistic, deterministic synthetic data only. It is an advanced demonstration MVP, not certified clinical software and not intended for real patient or donor data.
 
+**Live demonstration:** [rabta-e-hayat-ai.vercel.app](https://rabta-e-hayat-ai.vercel.app) — choose any listed synthetic role on the sign-in page. For the guided judging path, start with the RBC Coordinator and open **Showcase**.
+
 ## Why it exists
 
 Blood supply is perishable and fragmented. A hospital can face a shortage while compatible stock approaches expiry elsewhere; staff may still coordinate through disconnected registers, delayed reports, and manual calls. Generic inventory software can count bags, but it does not connect demand uncertainty, usable shelf life, transport feasibility, sharing consent, clinical safety, and custody into one decision.

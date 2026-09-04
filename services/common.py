@@ -1,18 +1,28 @@
 """Shared plumbing for the read services.
 
-Spec §12.13: `@st.cache_data` on read queries, `@st.cache_resource` for the
-engine and loaded models, and never a query inside a loop. Cached functions must
-return plain data — DataFrames, dicts, lists — because Streamlit pickles the
-result. Returning SQLAlchemy ORM instances would make the cache silently useless
-and hand pages detached objects.
+The current product is served by FastAPI. Streamlit caching remains an optional
+compatibility layer for the original prototype, but it is not a production
+runtime dependency. Cached functions return plain data rather than ORM objects.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, time, timezone
+import os
 
 import pandas as pd
-import streamlit as st
+
+st = None
+if os.getenv("RABTA_ENABLE_STREAMLIT_CACHE", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}:
+    try:  # Optional compatibility for the retired Streamlit prototype.
+        import streamlit as st
+    except ImportError:  # pragma: no cover - lean web deployment
+        pass
 
 from core.clock import DEMO_DATETIME  # noqa: F401  (re-exported for callers)
 from db.session import SessionLocal
@@ -44,9 +54,12 @@ def scalar(statement):
 
 
 def cached(ttl: int = CACHE_TTL):
-    """`st.cache_data` that degrades to a plain function outside Streamlit."""
+    """Use Streamlit caching when available, otherwise return the function."""
 
     def decorate(function):
+        if st is None:
+            return function
+
         try:
             return st.cache_data(ttl=ttl, show_spinner=False)(function)
         except Exception:  # pragma: no cover - non-Streamlit contexts
@@ -71,6 +84,9 @@ def tier_sort_key(tier: str) -> int:
 
 def clear_caches() -> None:
     """Called after any write, so the next rerun reads the new state."""
+
+    if st is None:
+        return
 
     try:
         st.cache_data.clear()

@@ -24,7 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Integer, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import Permission
@@ -206,7 +206,7 @@ def awaiting_release(db: Session, actor: Actor, *, limit: int = 200) -> list[dic
             Donor.donor_code,
             func.count(DonationTest.id).label("results"),
             func.max(DonationTest.tested_by).label("tested_by"),
-            func.sum(DonationTest.is_reactive).label("reactive"),
+            func.sum(cast(DonationTest.is_reactive, Integer)).label("reactive"),
         )
         .join(Donor, Donor.id == Donation.donor_id)
         .join(DonationTest, DonationTest.donation_id == Donation.id)

@@ -312,7 +312,7 @@ class Donor(Base):
 
     donor_type: Mapped[str] = mapped_column(String(20), default="VOLUNTARY")
 
-    availability_status: Mapped[str] = mapped_column(String(20), default="AVAILABLE")
+    availability_status: Mapped[str] = mapped_column(String(30), default="AVAILABLE")
     first_donation_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(), nullable=True
     )

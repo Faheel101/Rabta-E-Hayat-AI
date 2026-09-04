@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 import asyncio
 from datetime import datetime, timezone
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -158,7 +159,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.mount(
     "/static",
-    StaticFiles(directory="web/static"),
+    StaticFiles(directory=Path(__file__).resolve().parent / "static"),
     name="static",
 )
 
