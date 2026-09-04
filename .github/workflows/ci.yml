@@ -35,6 +35,6 @@ jobs:
       - name: Build deterministic release data
         run: python -m scripts.rebuild
       - name: Run automated suite
-        run: pytest -q
+        run: python -m pytest -q tests
       - name: Validate release configuration
         run: python -m scripts.release_check
