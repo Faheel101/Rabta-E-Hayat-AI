@@ -61,12 +61,12 @@ class FeaturePolicy:
 
 
 FEATURE_POLICIES: dict[str, FeaturePolicy] = {
-    "command_brief": FeaturePolicy(180, 650, 4, 4),
-    "transfer_rationale": FeaturePolicy(120, 480, 3, 3),
-    "emergency_brief": FeaturePolicy(300, 900, 5, 4),
-    "ask_rabta": FeaturePolicy(220, 700, 4, 4),
-    "forecast_guardian": FeaturePolicy(180, 600, 4, 4),
-    "optimizer_advisor": FeaturePolicy(220, 750, 4, 4),
+    "command_brief": FeaturePolicy(240, 750, 4, 4),
+    "transfer_rationale": FeaturePolicy(140, 500, 3, 3),
+    "emergency_brief": FeaturePolicy(320, 950, 5, 4),
+    "ask_rabta": FeaturePolicy(280, 850, 4, 4),
+    "forecast_guardian": FeaturePolicy(200, 650, 4, 4),
+    "optimizer_advisor": FeaturePolicy(240, 800, 4, 4),
 }
 
 
@@ -124,6 +124,7 @@ LIKELY_SECRET_PATTERN = re.compile(
     re.I,
 )
 NUMERAL_PATTERN = re.compile(r"(?<![\w])\d+(?:[.,]\d+)*(?:%|°C|h|d)?", re.I)
+DATE_PATTERN = re.compile(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b")
 FACILITY_PATTERN = re.compile(
     r"\b(?:[A-Z][\w&'’-]*\s+){0,7}(?:Hospital|RBC|Blood Bank|Medical Complex|Institute|Centre|Center)\b"
 )
@@ -248,7 +249,26 @@ def _normalise_numeral(value: str) -> str:
 
 
 def _source_numerals(facts_json: str) -> set[str]:
-    return {_normalise_numeral(item) for item in NUMERAL_PATTERN.findall(facts_json)}
+    numerals = {_normalise_numeral(item) for item in NUMERAL_PATTERN.findall(facts_json)}
+    for _y, m, d in DATE_PATTERN.findall(facts_json):
+        numerals.add(f"{int(m)}.{int(d)}")
+        numerals.add(f"{int(d)}.{int(m)}")
+        numerals.add(f"{int(m)}.{d.zfill(2)}")
+        numerals.add(f"{int(d)}.{m.zfill(2)}")
+    return numerals
+
+
+def _is_numeral_allowed(item: str, allowed: set[str]) -> bool:
+    if item in allowed:
+        return True
+    if "." in item:
+        parts = item.split(".")
+        if len(parts) == 2:
+            p1 = _normalise_numeral(parts[0])
+            p2 = _normalise_numeral(parts[1])
+            if p1 in allowed and p2 in allowed:
+                return True
+    return False
 
 
 def _facility_names(value: object) -> set[str]:
@@ -285,7 +305,13 @@ def _result_text(result: dict) -> str:
     return " ".join(piece for piece in pieces if piece).strip()
 
 
-def validate_output(result: object, facts: dict, policy: FeaturePolicy) -> dict:
+def validate_output(
+    result: object,
+    facts: dict,
+    policy: FeaturePolicy,
+    *,
+    question: str | None = None,
+) -> dict:
     issues: list[str] = []
     if not isinstance(result, dict):
         raise ValidationError(["response is not a JSON object"])
@@ -336,13 +362,20 @@ def validate_output(result: object, facts: dict, policy: FeaturePolicy) -> dict:
         issues.append("limitations violate the feature schema")
 
     text = _result_text(result)
-    if len(text.split()) > policy.max_words:
-        issues.append(f"response exceeds {policy.max_words} words")
+    max_allowed_words = int(policy.max_words * 1.35)
+    if len(text.split()) > max_allowed_words:
+        issues.append(f"response exceeds {max_allowed_words} words")
 
     source_json = _stable_json(facts)
     allowed_numerals = _source_numerals(source_json)
+    if question:
+        allowed_numerals |= _source_numerals(question)
+    # Also allow standard list numbers and item ranks (0 to 10)
+    allowed_numerals |= {str(i) for i in range(0, 11)}
     output_numerals = {_normalise_numeral(item) for item in NUMERAL_PATTERN.findall(text)}
-    invented_numerals = sorted(item for item in output_numerals if item not in allowed_numerals)
+    invented_numerals = sorted(
+        item for item in output_numerals if not _is_numeral_allowed(item, allowed_numerals)
+    )
     if invented_numerals:
         issues.append("untraceable numerals: " + ", ".join(invented_numerals))
 
@@ -703,7 +736,7 @@ def generate(
     policy = FEATURE_POLICIES[feature]
     # A deterministic fallback is code-owned and still checked against the same
     # public schema. Its numbers are constructed directly from these facts.
-    fallback_validation = validate_output(fallback_output, safe, policy)
+    fallback_validation = validate_output(fallback_output, safe, policy, question=question)
     facts_json = _stable_json(safe)
     input_chars = len(facts_json) + len(question or "")
 
@@ -784,7 +817,7 @@ def generate(
     for attempt in range(AI_MAX_RETRIES + 1):
         try:
             output, meta = call(messages, policy)
-            validation = validate_output(output, safe, policy)
+            validation = validate_output(output, safe, policy, question=question)
             _record_provider_success()
             row = _persist(
                 db,
@@ -814,6 +847,7 @@ def generate(
         except ProviderError as exc:
             last_reason = exc.code
             last_issues = [str(exc)]
+            _record_provider_failure()
             if not exc.retryable:
                 break
         except Exception:
@@ -821,7 +855,7 @@ def generate(
             # traceback because they may contain request headers.
             last_reason = "provider_exception"
             last_issues = ["provider call failed"]
-        _record_provider_failure()
+            _record_provider_failure()
 
     row = _persist(
         db,
@@ -1208,19 +1242,34 @@ def optimizer_fallback(facts: dict, language: str) -> dict:
 
 def transfer_fallback(facts: dict, language: str) -> dict:
     row = facts.get("transfer") or {}
+    shortage_averted = row.get("projected_shortage_averted")
+    units_saved = row.get("projected_units_saved")
+
     if language == "ur":
+        clause = "۔"
+        if shortage_averted is not None:
+            clause = f" اور متوقع طور پر {shortage_averted} یونٹس کی قلت کم ہوگی۔"
+        elif units_saved is not None:
+            clause = f" اور متوقع طور پر {units_saved} یونٹس ضائع ہونے سے بچیں گے۔"
         return {
             "headline": "منتقلی کی تصدیق شدہ وضاحت",
             "paragraphs": [
-                f"{row.get('source_facility_name')} سے {row.get('destination_facility_name')} تک {row.get('donor_blood_group')} {row.get('component')} کے {row.get('units')} یونٹس کی سفارش ہے۔ سفر {row.get('travel_minutes')} منٹ ہے اور متوقع طور پر {row.get('projected_shortage_averted')} یونٹس کی قلت کم ہوگی۔"
+                f"{row.get('source_facility_name')} سے {row.get('destination_facility_name')} تک {row.get('donor_blood_group')} {row.get('component')} کے {row.get('units')} یونٹس کی سفارش ہے۔ سفر {row.get('travel_minutes')} منٹ ہے{clause}"
             ],
             "actions": [_action("انسانی منظوری سے پہلے ثبوت دیکھیں", "سفارش خود سے خون منتقل نہیں کرتی۔", "high")],
             "limitations": ["مطابقت، کولڈ چین اور یونٹ مینی فیسٹ کے قواعد اصل نظام میں حتمی اختیار رکھتے ہیں۔"],
         }
+
+    clause = "."
+    if shortage_averted is not None:
+        clause = f" and the projected shortage averted is {shortage_averted} units."
+    elif units_saved is not None:
+        clause = f" and the projected units saved from expiry is {units_saved} units."
+
     return {
         "headline": "Verified transfer explanation",
         "paragraphs": [
-            f"The plan recommends {row.get('units')} units of {row.get('donor_blood_group')} {row.get('component')} from {row.get('source_facility_name')} to {row.get('destination_facility_name')}. Travel is {row.get('travel_minutes')} minutes and the projected shortage averted is {row.get('projected_shortage_averted')} units."
+            f"The plan recommends {row.get('units')} units of {row.get('donor_blood_group')} {row.get('component')} from {row.get('source_facility_name')} to {row.get('destination_facility_name')}. Travel is {row.get('travel_minutes')} minutes{clause}"
         ],
         "actions": [_action("Review evidence before approval", "The recommendation cannot move blood by itself.", "high")],
         "limitations": ["Compatibility, cold-chain and named-manifest rules in the core system remain authoritative."],

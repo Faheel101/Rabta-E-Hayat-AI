@@ -75,9 +75,9 @@ QWEN_BASE_URL = (
     or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 ).rstrip("/")
 AI_TIMEOUT_SECONDS = min(
-    30.0, max(1.0, float(os.getenv("AI_TIMEOUT_SECONDS") or "8"))
+    30.0, max(1.0, float(os.getenv("AI_TIMEOUT_SECONDS") or "25"))
 )
-AI_MAX_RETRIES = min(1, max(0, int(os.getenv("AI_MAX_RETRIES") or "1")))
+AI_MAX_RETRIES = min(1, max(0, int(os.getenv("AI_MAX_RETRIES") or "0")))
 AI_MAX_INPUT_CHARS = min(
     50_000, max(2_000, int(os.getenv("AI_MAX_INPUT_CHARS") or "20000"))
 )

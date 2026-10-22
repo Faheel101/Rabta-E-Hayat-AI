@@ -377,3 +377,82 @@ def test_ai_generation_cannot_mutate_inventory_or_transfer_state(ai_db):
 
     assert result.status == "VERIFIED"
     assert after == before
+
+
+def test_date_numerals_and_word_grace_are_accepted_in_validation(ai_db):
+    actor = _actor(ai_db)
+    facts = _facts(ai_db, actor, signals=5)
+    facts["first_reserve_breach"] = "2026-08-04"
+    facts["secondary_breach"] = "2026-10-03"
+
+    output = {
+        "headline": "Forecast review",
+        "paragraphs": [
+            f"Breach predicted on 8.04 and next reserve floor risk on 10.03 for {facts['active_facility_name']} with 5 signals."
+        ],
+        "actions": [
+            {
+                "label": "Check storage tier 1",
+                "reason": "Ensure priority 2 units are safely stored.",
+                "priority": "high",
+            }
+        ],
+        "limitations": ["Review by clinical staff required."],
+    }
+
+    result = ai_service.generate(
+        ai_db,
+        actor,
+        feature="command_brief",
+        language="en",
+        facts=facts,
+        fallback=_fallback,
+        provider_call=lambda *_: (output, {}),
+        force=True,
+    )
+    assert result.status == "VERIFIED"
+    assert result.fallback_reason is None
+
+
+def test_validation_error_does_not_trip_circuit_breaker(ai_db):
+    actor = _actor(ai_db)
+    facts = _facts(ai_db, actor, signals=5)
+
+    invalid_output = {
+        "headline": "Invalid",
+        "paragraphs": ["Invented numeral 99999."],
+        "actions": [],
+        "limitations": [],
+    }
+
+    # Cause 3 validation errors in a row
+    for _ in range(3):
+        result = ai_service.generate(
+            ai_db,
+            actor,
+            feature="command_brief",
+            language="en",
+            facts=facts,
+            fallback=_fallback,
+            provider_call=lambda *_: (invalid_output, {}),
+            force=True,
+        )
+        assert result.status == "FALLBACK"
+        assert result.fallback_reason == "output_validation_failed"
+
+    # Circuit breaker must STILL be closed!
+    assert not ai_service._circuit_is_open()
+
+    # Next valid call must succeed and be VERIFIED
+    valid_result = ai_service.generate(
+        ai_db,
+        actor,
+        feature="command_brief",
+        language="en",
+        facts=facts,
+        fallback=_fallback,
+        provider_call=lambda *_: (_output(facts), {}),
+        force=True,
+    )
+    assert valid_result.status == "VERIFIED"
+
